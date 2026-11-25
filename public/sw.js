@@ -1,4 +1,4 @@
-const CACHE_NAME = 'linhbridge-v3';
+const CACHE_NAME = 'linhbridge-v4';
 const PRECACHE = [
   './',
   './index.html',
@@ -35,9 +35,9 @@ self.addEventListener('fetch', (event) => {
   // Never intercept Bridge API calls or external origins
   if (url.origin !== self.location.origin || url.pathname.includes('/api/')) return;
 
-  // Network-first so fresh deployments show up immediately, with offline fallback
+  // Network-first with no-store so fresh deployments show up immediately
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-store' })
       .then((res) => {
         if (res.ok) {
           const clone = res.clone();
