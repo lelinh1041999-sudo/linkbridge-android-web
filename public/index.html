@@ -474,6 +474,43 @@
     </div>
   </dialog>
 
+  <!-- AI Cloud Relay Bridge Modal -->
+  <dialog id="ai-modal" class="modal">
+    <div class="modal-header">
+      <h2>AI Bridge — Cho phép AI xem &amp; điều khiển từ xa</h2>
+      <button id="btn-close-ai" class="btn btn-ghost btn-icon btn-sm" aria-label="Đóng">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="tip-box">
+        Bật <strong>AI Bridge</strong> để kết nối trình duyệt này với <strong>Cloud Relay</strong>. Khi bật, AI có thể xem màn hình hiện tại và thực thi lệnh <code>tap</code>, <code>swipe</code>, <code>text</code>, <code>ui</code>, <code>shell</code>. Đóng tab hoặc bấm Ngắt là thu hồi quyền ngay.
+      </div>
+
+      <div class="form-field">
+        <label class="form-label" for="ai-relay-url">URL Cloud Relay (Cloudflare Worker / Render)</label>
+        <input id="ai-relay-url" class="input-field" placeholder="https://linhbridge-relay.ten-ban.workers.dev" />
+      </div>
+
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label" for="ai-room-id">Mã phòng (Room ID)</label>
+          <input id="ai-room-id" class="input-field" readonly />
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="ai-room-token">Token bảo mật</label>
+          <input id="ai-room-token" class="input-field" readonly />
+        </div>
+      </div>
+
+      <div class="row-actions">
+        <button id="btn-ai-toggle" class="btn btn-primary" style="flex:1;">Bật AI Bridge</button>
+        <button id="btn-ai-regen" class="btn" title="Tạo mã phòng & token mới">Đổi mã</button>
+        <button id="btn-ai-copy" class="btn">Copy thông tin</button>
+      </div>
+
+      <div id="ai-feedback" class="modal-feedback"></div>
+    </div>
+  </dialog>
+
   <div id="toast-container" class="toast-container"></div>
 
   <script type="module" src="./js/app.js"></script>

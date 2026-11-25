@@ -1692,6 +1692,255 @@ function stopDemoMode() { if (state.demoMode) demo.stop(); }
 dom.btnOverlayDemo.addEventListener('click', () => demo.start());
 
 // ==========================================================================
+// AI Cloud Relay Bridge (lets cloud AI see screen & control phone)
+// ==========================================================================
+
+const aiBridge = {
+  ws: null,
+  pingTimer: null,
+  connected: false,
+  roomId: localStorage.getItem('lb_ai_room') || `LB-${Math.floor(1000 + Math.random() * 9000)}`,
+  token: localStorage.getItem('lb_ai_token') || (() => {
+    const arr = new Uint8Array(12);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+  })(),
+
+  saveCreds() {
+    localStorage.setItem('lb_ai_room', this.roomId);
+    localStorage.setItem('lb_ai_token', this.token);
+  },
+
+  regenerate() {
+    this.roomId = `LB-${Math.floor(1000 + Math.random() * 9000)}`;
+    const arr = new Uint8Array(12);
+    crypto.getRandomValues(arr);
+    this.token = Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+    this.saveCreds();
+    $('ai-room-id').value = this.roomId;
+    $('ai-room-token').value = this.token;
+    if (this.connected) {
+      this.disconnect();
+      this.connect();
+    }
+  },
+
+  setFeedback(ok, text) {
+    const el = $('ai-feedback');
+    el.className = `modal-feedback ${ok ? 'ok' : 'err'}`;
+    el.textContent = text;
+  },
+
+  updateButtonUi() {
+    const btn = $('btn-ai-bridge');
+    const lbl = $('ai-bridge-btn-label');
+    const toggle = $('btn-ai-toggle');
+    btn.classList.toggle('is-active', this.connected);
+    lbl.textContent = this.connected ? `AI: ${this.roomId}` : 'AI Bridge';
+    toggle.textContent = this.connected ? 'Ngắt AI Bridge' : 'Bật AI Bridge';
+    toggle.classList.toggle('btn-danger', this.connected);
+    toggle.classList.toggle('btn-primary', !this.connected);
+  },
+
+  connect() {
+    const rawUrl = $('ai-relay-url').value.trim().replace(/\/+$/, '');
+    if (!rawUrl) {
+      this.setFeedback(false, 'Vui lòng nhập URL Cloud Relay (Cloudflare Worker hoặc Render).');
+      return;
+    }
+    localStorage.setItem('lb_ai_relay_url', rawUrl);
+    this.saveCreds();
+    this.disconnect();
+
+    const wsBase = rawUrl.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://');
+    const wsUrl = `${wsBase}/room/${encodeURIComponent(this.roomId)}?token=${encodeURIComponent(this.token)}`;
+    this.setFeedback(true, 'Đang kết nối tới Cloud Relay...');
+
+    const ws = new WebSocket(wsUrl);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      this.connected = true;
+      this.updateButtonUi();
+      this.setFeedback(true, `Đã bật AI Bridge! Phòng: ${this.roomId}`);
+      toast(`AI Bridge đã bật (${this.roomId})`, 'ok');
+      appendLog('sys', `[AI Bridge] Đã kết nối Cloud Relay (Phòng ${this.roomId}).`);
+      this.pingTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
+      }, 20000);
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'pong' || msg.type === 'relay_ready' || !msg.id) return;
+        const reply = await this.handleCommand(msg);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ id: msg.id, ...reply }));
+        }
+      } catch (err) {
+        // Ignore malformed
+      }
+    };
+
+    ws.onerror = () => {
+      this.setFeedback(false, 'Không kết nối được tới Cloud Relay. Kiểm tra lại URL.');
+    };
+
+    ws.onclose = () => {
+      if (this.ws === ws) {
+        this.ws = null;
+        this.connected = false;
+        if (this.pingTimer) {
+          clearInterval(this.pingTimer);
+          this.pingTimer = null;
+        }
+        this.updateButtonUi();
+      }
+    };
+  },
+
+  disconnect() {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.ws) {
+      const old = this.ws;
+      this.ws = null;
+      try { old.close(); } catch {}
+    }
+    this.connected = false;
+    this.updateButtonUi();
+  },
+
+  async runShellAny(command) {
+    if (state.demoMode) {
+      return { ok: true, stdout: demo.runCommand('shell', [], command), stderr: '' };
+    }
+    if (state.mode === 'webusb' && state.webUsbDriver) {
+      return state.webUsbDriver.runShell(command);
+    }
+    if (state.selectedSerial) {
+      const res = await fetch(apiUrl(`/api/device/${encodeURIComponent(state.selectedSerial)}/shell`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      });
+      return res.json();
+    }
+    throw new Error('Chưa kết nối điện thoại trên LinhBridge.');
+  },
+
+  async handleCommand(msg) {
+    const action = String(msg.action || '').toLowerCase();
+    try {
+      if (action === 'screenshot') {
+        const q = Number(msg.quality) || 0.85;
+        const dataUrl = dom.canvas.toDataURL('image/jpeg', q);
+        const base64 = dataUrl.split(',')[1] || '';
+        return {
+          ok: true,
+          width: client.width || dom.canvas.width,
+          height: client.height || dom.canvas.height,
+          imageBase64: base64,
+        };
+      }
+
+      if (action === 'ui') {
+        const res = await this.runShellAny('uiautomator dump /sdcard/.lb_ui.xml >/dev/null 2>&1 && cat /sdcard/.lb_ui.xml');
+        const xml = res.stdout || '';
+        const elements = [];
+        const nodeRe = /<node\s+([^>]+?)\/?>/g;
+        let m;
+        while ((m = nodeRe.exec(xml)) !== null) {
+          const attrs = m[1];
+          const getAttr = (k) => {
+            const am = attrs.match(new RegExp(`${k}="([^"]*)"`));
+            return am ? am[1] : '';
+          };
+          const text = getAttr('text');
+          const desc = getAttr('content-desc');
+          const id = getAttr('resource-id').split('/').pop() || '';
+          const clickable = getAttr('clickable') === 'true';
+          const bounds = getAttr('bounds');
+          const bm = bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+          if (!bm) continue;
+          if (!text && !desc && !clickable) continue;
+          const x = Math.round((Number(bm[1]) + Number(bm[3])) / 2);
+          const y = Math.round((Number(bm[2]) + Number(bm[4])) / 2);
+          elements.push({ text, desc, id, clickable, x, y });
+        }
+        return { ok: true, elements: elements.slice(0, 120) };
+      }
+
+      if (action === 'tap') {
+        await executeCommandLine(`tap ${Number(msg.x)} ${Number(msg.y)}`);
+        return { ok: true };
+      }
+      if (action === 'swipe') {
+        await executeCommandLine(
+          `swipe ${Number(msg.x1)} ${Number(msg.y1)} ${Number(msg.x2)} ${Number(msg.y2)} ${Number(msg.durationMs) || 260}`
+        );
+        return { ok: true };
+      }
+      if (action === 'text') {
+        await executeCommandLine(`text ${msg.text || ''}`);
+        return { ok: true };
+      }
+      if (action === 'key') {
+        await executeCommandLine(`key ${msg.keycode || 'HOME'}`);
+        return { ok: true };
+      }
+      if (action === 'app') {
+        await executeCommandLine(`app ${msg.package || ''}`);
+        return { ok: true };
+      }
+      if (action === 'screen') {
+        await executeCommandLine(`screen ${msg.on ? 'on' : 'off'}`);
+        return { ok: true };
+      }
+      if (action === 'shell') {
+        const out = await this.runShellAny(msg.command || '');
+        return { ok: out.ok !== false, stdout: out.stdout || '', stderr: out.stderr || '' };
+      }
+
+      return { ok: false, error: `Lệnh không hỗ trợ: ${action}` };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  },
+};
+
+aiBridge.saveCreds();
+$('ai-relay-url').value = localStorage.getItem('lb_ai_relay_url') || '';
+$('ai-room-id').value = aiBridge.roomId;
+$('ai-room-token').value = aiBridge.token;
+
+$('btn-ai-bridge').addEventListener('click', () => {
+  $('ai-feedback').className = 'modal-feedback';
+  $('ai-modal').showModal();
+});
+$('btn-close-ai').addEventListener('click', () => $('ai-modal').close());
+$('ai-modal').addEventListener('click', (e) => { if (e.target === $('ai-modal')) $('ai-modal').close(); });
+
+$('btn-ai-toggle').addEventListener('click', () => {
+  if (aiBridge.connected) aiBridge.disconnect();
+  else aiBridge.connect();
+});
+$('btn-ai-regen').addEventListener('click', () => aiBridge.regenerate());
+$('btn-ai-copy').addEventListener('click', async () => {
+  const relayUrl = $('ai-relay-url').value.trim() || '(chưa nhập URL Relay)';
+  const info = `Relay: ${relayUrl}\nRoom: ${aiBridge.roomId}\nToken: ${aiBridge.token}`;
+  try {
+    await navigator.clipboard.writeText(info);
+    toast('Đã copy thông tin AI Bridge để gửi cho AI!', 'ok');
+  } catch {
+    aiBridge.setFeedback(true, info);
+  }
+});
+
+// ==========================================================================
 // Boot
 // ==========================================================================
 

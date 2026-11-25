@@ -1,0 +1,155 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * ai-ctl — Remote AI control CLI for LinhBridge Cloud Relay.
+ * Allows this cloud environment (or any AI script) to see the phone screen,
+ * inspect clickable UI elements, and tap/swipe/type/run shell commands.
+ */
+
+const fs = require('fs');
+
+function usage() {
+  console.log(`
+ai-ctl — Điều khiển Samsung S26 từ xa qua LinhBridge AI Bridge
+
+Biến môi trường (hoặc truyền qua cờ):
+  LB_RELAY_URL   URL Relay (vd: https://linhbridge-relay.xxx.workers.dev)
+  LB_ROOM        Mã phòng (vd: LB-8492)
+  LB_TOKEN       Token phòng
+
+Các lệnh:
+  ai-ctl status
+  ai-ctl screenshot [out.jpg]        Chụp ảnh màn hình hiện tại (< 50ms)
+  ai-ctl ui                          Lấy danh sách nút/text có thể bấm + tọa độ (x, y)
+  ai-ctl tap <x> <y>
+  ai-ctl swipe <x1> <y1> <x2> <y2> [ms]
+  ai-ctl text <nội dung>
+  ai-ctl key <HOME|BACK|ENTER|POWER|...>
+  ai-ctl app <package>
+  ai-ctl screen <on|off>
+  ai-ctl shell <lệnh adb shell>
+`);
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  let relayUrl = process.env.LB_RELAY_URL || '';
+  let room = process.env.LB_ROOM || '';
+  let token = process.env.LB_TOKEN || '';
+
+  while (args[0] && args[0].startsWith('--')) {
+    const flag = args.shift();
+    if (flag === '--relay' && args[0]) relayUrl = args.shift();
+    else if (flag === '--room' && args[0]) room = args.shift();
+    else if (flag === '--token' && args[0]) token = args.shift();
+    else if (flag === '--help' || flag === '-h') {
+      usage();
+      process.exit(0);
+    }
+  }
+
+  const cmd = (args[0] || '').toLowerCase();
+  const rest = args.slice(1);
+
+  if (!cmd || cmd === 'help') {
+    usage();
+    process.exit(0);
+  }
+  if (!relayUrl || !room || (!token && cmd !== 'status')) {
+    console.error('Thiếu LB_RELAY_URL / LB_ROOM / LB_TOKEN.');
+    process.exit(1);
+  }
+
+  const base = relayUrl.replace(/\/+$/, '');
+
+  if (cmd === 'status') {
+    const r = await fetch(`${base}/room/${encodeURIComponent(room)}/status`);
+    console.log(await r.text());
+    return;
+  }
+
+  let body;
+  switch (cmd) {
+    case 'screenshot':
+      body = { action: 'screenshot', format: 'jpeg', quality: 0.85 };
+      break;
+    case 'ui':
+      body = { action: 'ui' };
+      break;
+    case 'tap':
+      body = { action: 'tap', x: Number(rest[0]), y: Number(rest[1]) };
+      break;
+    case 'swipe':
+      body = {
+        action: 'swipe',
+        x1: Number(rest[0]),
+        y1: Number(rest[1]),
+        x2: Number(rest[2]),
+        y2: Number(rest[3]),
+        durationMs: Number(rest[4]) || 260,
+      };
+      break;
+    case 'text':
+      body = { action: 'text', text: rest.join(' ') };
+      break;
+    case 'key':
+      body = { action: 'key', keycode: rest[0] };
+      break;
+    case 'app':
+      body = { action: 'app', package: rest[0] };
+      break;
+    case 'screen':
+      body = { action: 'screen', on: (rest[0] || '').toLowerCase() === 'on' };
+      break;
+    case 'shell':
+      body = { action: 'shell', command: rest.join(' ') };
+      break;
+    default:
+      body = { action: 'shell', command: [cmd, ...rest].join(' ') };
+      break;
+  }
+
+  const res = await fetch(`${base}/room/${encodeURIComponent(room)}/cmd`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json();
+  if (!res.ok || data.ok === false) {
+    console.error(data.error || `HTTP ${res.status}`);
+    process.exit(1);
+  }
+
+  if (cmd === 'screenshot' && data.imageBase64) {
+    const outPath = rest[0] || `/tmp/linhbridge-${Date.now()}.jpg`;
+    fs.writeFileSync(outPath, Buffer.from(data.imageBase64, 'base64'));
+    console.log(`Saved ${outPath} (${data.width}x${data.height})`);
+    return;
+  }
+
+  if (cmd === 'ui' && Array.isArray(data.elements)) {
+    for (const el of data.elements) {
+      const label = [el.text, el.desc, el.id].filter(Boolean).join(' | ');
+      console.log(`(${el.x}, ${el.y}) [${el.clickable ? 'BTN' : 'TXT'}] ${label}`);
+    }
+    return;
+  }
+
+  if (data.stdout !== undefined) {
+    if (data.stdout) process.stdout.write(data.stdout);
+    if (data.stderr) process.stderr.write(data.stderr);
+    return;
+  }
+
+  console.log(JSON.stringify(data));
+}
+
+main().catch((err) => {
+  console.error(`[ai-ctl] Lỗi: ${err.message}`);
+  process.exit(1);
+});
