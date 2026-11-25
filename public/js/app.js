@@ -929,7 +929,7 @@ function sendBackspaceCount(count) {
   }
 }
 
-function syncImeDiff(curr) {
+function syncImeDiff(curr, allowReset = true) {
   const prev = lastImeValue;
   let k = 0;
   const minLen = Math.min(prev.length, curr.length);
@@ -941,7 +941,7 @@ function syncImeDiff(curr) {
   if (delCount > 0) sendBackspaceCount(delCount);
   if (added.length > 0) sendTypedText(added);
 
-  if (!curr || /[\s\n]$/.test(curr) || curr.length > 40) {
+  if (allowReset && (!curr || /[\s\n]$/.test(curr) || curr.length > 40)) {
     resetImeBuffer();
   } else {
     lastImeValue = curr;
@@ -952,19 +952,24 @@ dom.imeProxy.addEventListener('compositionstart', () => {
   isComposingIme = true;
 });
 
+dom.imeProxy.addEventListener('compositionupdate', () => {
+  // Stream each letter + Vietnamese Telex tone mark live as the user types!
+  syncImeDiff(dom.imeProxy.value, false);
+});
+
 dom.imeProxy.addEventListener('compositionend', (e) => {
   isComposingIme = false;
   const curr = dom.imeProxy.value;
   if (curr) {
-    syncImeDiff(curr);
+    syncImeDiff(curr, true);
   } else if (e.data) {
-    sendTypedText(e.data);
+    syncImeDiff(e.data, true);
   }
 });
 
-dom.imeProxy.addEventListener('input', (e) => {
-  if (isComposingIme || e.isComposing) return;
-  syncImeDiff(dom.imeProxy.value);
+dom.imeProxy.addEventListener('input', () => {
+  // Always sync immediately (even while ChromeOS VI IME is composing)
+  syncImeDiff(dom.imeProxy.value, !isComposingIme);
 });
 
 const DIRECT_CONTROL_CODES = new Set([
@@ -1590,8 +1595,37 @@ dom.btnCopyFromPhone.addEventListener('click', async () => {
 });
 
 // ==========================================================================
-// Wireless Debugging Modal
+// Wireless Debugging Modal & Saved 1-Click Wi-Fi Address
 // ==========================================================================
+
+const DEFAULT_WIFI_ADDR = '10.240.253.97:5555';
+
+function getSavedWifiAddr() {
+  return (localStorage.getItem('lb_last_wifi_addr') || DEFAULT_WIFI_ADDR).trim();
+}
+
+function saveWifiAddr(addr) {
+  const clean = String(addr || '').trim();
+  if (!clean) return;
+  localStorage.setItem('lb_last_wifi_addr', clean);
+  if (dom.quickConnectAddr) dom.quickConnectAddr.value = clean;
+  updateSavedWifiUi();
+}
+
+function updateSavedWifiUi() {
+  const addr = getSavedWifiAddr();
+  if (dom.quickConnectAddr && !dom.quickConnectAddr.value) {
+    dom.quickConnectAddr.value = addr;
+  }
+  if (dom.btnOverlayWifi) {
+    dom.btnOverlayWifi.textContent = `Kết nối Wi-Fi 1 chạm (${addr})`;
+  }
+}
+
+function selectWifiModalTab(tabName) {
+  document.querySelectorAll('.modal-tab').forEach((t) => t.classList.toggle('active', t.dataset.mtab === tabName));
+  document.querySelectorAll('.modal-pane').forEach((p) => p.classList.toggle('active', p.id === `mpane-${tabName}`));
+}
 
 function setModalFeedback(ok, text) {
   dom.wifiFeedback.className = `modal-feedback ${ok ? 'ok' : 'err'}`;
@@ -1601,20 +1635,51 @@ function setModalFeedback(ok, text) {
 function openWifiModal() {
   dom.wifiFeedback.className = 'modal-feedback';
   dom.wifiFeedback.textContent = '';
+  if (dom.quickConnectAddr) dom.quickConnectAddr.value = getSavedWifiAddr();
+  selectWifiModalTab('connect');
   refreshDevices();
   dom.wifiModal.showModal();
 }
 
+updateSavedWifiUi();
+
 dom.btnOpenWifi.addEventListener('click', openWifiModal);
-dom.btnOverlayWifi.addEventListener('click', openWifiModal);
+// 1-click direct Wi-Fi reconnect from the main overlay!
+dom.btnOverlayWifi.addEventListener('click', async () => {
+  const addr = getSavedWifiAddr();
+  if (state.bridgeOnline && addr) {
+    toast(`Đang kết nối Wi-Fi tới ${addr}...`, 'ok');
+    setConnectionVisual('connecting', `Đang kết nối Wi-Fi (${addr})...`, 'Đang mở luồng hình ảnh từ Samsung S26.');
+    try {
+      const res = await fetch(apiUrl('/api/adb/connect'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: addr }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        saveWifiAddr(addr);
+        await refreshDevices(addr);
+        startBridgeStream(false);
+        return;
+      }
+      setConnectionVisual('idle');
+      openWifiModal();
+      setModalFeedback(false, data.message || `Không nối được ${addr}. Kiểm tra lại Wi-Fi/Hotspot.`);
+    } catch {
+      setConnectionVisual('idle');
+      openWifiModal();
+    }
+  } else {
+    openWifiModal();
+  }
+});
 dom.btnCloseWifi.addEventListener('click', () => dom.wifiModal.close());
 dom.wifiModal.addEventListener('click', (e) => { if (e.target === dom.wifiModal) dom.wifiModal.close(); });
 
 document.querySelectorAll('.modal-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
-    const target = tab.dataset.mtab;
-    document.querySelectorAll('.modal-tab').forEach((t) => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.modal-pane').forEach((p) => p.classList.toggle('active', p.id === `mpane-${target}`));
+    selectWifiModalTab(tab.dataset.mtab);
     dom.wifiFeedback.className = 'modal-feedback';
   });
 });
@@ -1651,7 +1716,7 @@ dom.btnDoPair.addEventListener('click', async () => {
 
 async function handleWirelessConnect(address) {
   const clean = String(address || '').trim();
-  if (!clean) return setModalFeedback(false, 'Hãy nhập địa chỉ IP:Port (vd: 192.168.1.25:41289).');
+  if (!clean) return setModalFeedback(false, 'Hãy nhập địa chỉ IP:Port (vd: 10.240.253.97:5555).');
 
   setModalFeedback(true, `Đang kết nối tới ${clean}...`);
   try {
@@ -1663,6 +1728,7 @@ async function handleWirelessConnect(address) {
     const data = await res.json();
     setModalFeedback(data.ok, data.message);
     if (data.ok) {
+      saveWifiAddr(clean);
       await refreshDevices(clean);
       setTimeout(() => {
         dom.wifiModal.close();
@@ -1693,6 +1759,7 @@ dom.btnDoTcpip.addEventListener('click', async () => {
     const data = await res.json();
     setModalFeedback(data.ok, data.ok ? `Đã mở Wi-Fi tại ${data.wifiAddress}! Có thể rút cáp USB.` : (data.stderr || 'Thất bại'));
     if (data.ok && data.wifiAddress) {
+      saveWifiAddr(data.wifiAddress);
       await refreshDevices(data.wifiAddress);
       setTimeout(() => {
         dom.wifiModal.close();
