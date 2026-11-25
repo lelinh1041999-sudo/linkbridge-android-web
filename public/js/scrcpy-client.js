@@ -436,6 +436,9 @@ export class ScrcpyWebClient {
 
   _initAudioDecoder(opusHeadBytes) {
     if (!this.audioEnabled || typeof AudioDecoder !== 'function') return;
+    if (opusHeadBytes && opusHeadBytes.length >= 19) {
+      this.lastOpusConfig = new Uint8Array(opusHeadBytes);
+    }
     if (this.audioDecoder) {
       try { this.audioDecoder.close(); } catch {}
       this.audioDecoder = null;
@@ -472,35 +475,44 @@ export class ScrcpyWebClient {
         }
       },
       error: (err) => {
-        console.warn('[AudioDecoder error]', err);
+        console.warn('[AudioDecoder error — auto recovering]', err);
+        this.audioDecoder = null;
       },
     });
 
     const config = { codec: 'opus', sampleRate: 48000, numberOfChannels: 2 };
-    if (opusHeadBytes && opusHeadBytes.length >= 19) {
-      config.description = opusHeadBytes;
+    const desc = opusHeadBytes && opusHeadBytes.length >= 19 ? opusHeadBytes : this.lastOpusConfig;
+    if (desc && desc.length >= 19) {
+      config.description = desc;
     }
     this.audioDecoder.configure(config);
   }
 
   handleAudioPacket(flags, pts, payload) {
-    if (!this.audioEnabled) return;
+    if (!this.audioEnabled || !payload || payload.byteLength === 0) return;
     const isConfig = (flags & 1) !== 0;
 
     if (isConfig) {
       this._initAudioDecoder(payload);
       return;
     }
-    if (!this.audioDecoder) {
-      this._initAudioDecoder(null);
+    if (!this.audioDecoder || this.audioDecoder.state === 'closed') {
+      this._initAudioDecoder(this.lastOpusConfig || null);
     }
     if (!this.audioDecoder || this.audioDecoder.state !== 'configured' || this.audioMuted) return;
+
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().catch(() => {});
+    }
 
     try {
       this.audioDecoder.decode(
         new EncodedAudioChunk({ type: 'key', timestamp: pts, data: payload })
       );
-    } catch {}
+    } catch {
+      // Self-heal on malformed transition packet between apps/videos
+      this._initAudioDecoder(this.lastOpusConfig || null);
+    }
   }
 
   _startRenderLoop() {
