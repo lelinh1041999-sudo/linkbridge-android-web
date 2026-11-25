@@ -1387,6 +1387,42 @@ async function executeCommandLine(rawLine) {
     }
   }
 
+  if (cmd === 'battery' || cmd === 'pin') {
+    try {
+      const out = await aiBridge.runShellAny('dumpsys battery');
+      const raw = (out.stdout || '').split('\n').slice(0, 35).join('\n');
+      const getNum = (key) => {
+        const m = raw.match(new RegExp(`^\\s*${key}:\\s*(-?\\d+)`, 'm'));
+        return m ? Number(m[1]) : null;
+      };
+      const getBool = (key) => new RegExp(`^\\s*${key}:\\s*true`, 'm').test(raw);
+      const level = getNum('level');
+      const tempRaw = getNum('temperature');
+      const voltRaw = getNum('voltage');
+      const status = getNum('status');
+      const chargeSrc = getBool('AC powered')
+        ? 'Đang sạc nhanh/AC'
+        : getBool('USB powered')
+          ? 'Đang sạc USB'
+          : getBool('Wireless powered')
+            ? 'Đang sạc không dây'
+            : status === 5
+              ? 'Đã đầy pin'
+              : 'Đang dùng pin';
+      const lines = [
+        `Pin: ${level !== null ? `${level}%` : '--'} (${chargeSrc})`,
+        `Nhiệt độ: ${tempRaw !== null ? `${(tempRaw / 10).toFixed(1)}°C` : '--'}`,
+        `Điện áp: ${voltRaw !== null ? `${(voltRaw / 1000).toFixed(2)}V` : '--'}`,
+      ];
+      appendLog('cmd', 'battery', `${out.durationMs ?? 0}ms`);
+      appendLog('out', lines.join('\n'));
+    } catch (err) {
+      appendLog('cmd', 'battery');
+      appendLog('err', err.message);
+    }
+    return;
+  }
+
   // Shell execution over Direct WebUSB!
   if (state.mode === 'webusb' && state.webUsbDriver) {
     try {
