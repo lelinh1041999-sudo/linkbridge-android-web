@@ -236,10 +236,10 @@
         </div>
 
         <div class="stage-hint">
-          <span><kbd>Click / Kéo</kbd> Chạm &amp; Vuốt</span>
+          <span><kbd>Click</kbd> Chạm</span>
+          <span><kbd>Vuốt 2 ngón</kbd> Lướt / Mở App Drawer</span>
           <span><kbd>Chuột phải</kbd> Back</span>
-          <span><kbd>Ctrl + Kéo</kbd> Phóng to / Thu nhỏ</span>
-          <span><kbd>Gõ phím</kbd> Nhập trực tiếp (hỗ trợ Tiếng Việt)</span>
+          <span><kbd>Ctrl + Kéo</kbd> Zoom 2 ngón</span>
         </div>
       </section>
 
@@ -373,6 +373,14 @@
                 <label class="toggle-row">
                   <span>Chuột phải = Nút Back</span>
                   <input id="set-rightback" type="checkbox" checked />
+                </label>
+                <label class="toggle-row">
+                  <span>Vuốt 2 ngón = Vuốt cảm ứng (mở App Drawer / lướt trang)</span>
+                  <input id="set-touchswipe" type="checkbox" checked />
+                </label>
+                <label class="toggle-row">
+                  <span>Đảo chiều vuốt 2 ngón (nếu bị ngược trên Chromebook)</span>
+                  <input id="set-invertswipe" type="checkbox" />
                 </label>
 
                 <button id="btn-apply-settings" class="btn btn-primary">Áp dụng &amp; Tải lại luồng</button>

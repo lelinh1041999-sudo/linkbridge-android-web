@@ -112,6 +112,8 @@ const dom = {
   setScreenOff: $('set-screenoff'),
   setStayAwake: $('set-stayawake'),
   setRightBack: $('set-rightback'),
+  setTouchSwipe: $('set-touchswipe'),
+  setInvertSwipe: $('set-invertswipe'),
   btnApplySettings: $('btn-apply-settings'),
   bridgeStatusTag: $('bridge-status-tag'),
   setBridgeUrl: $('set-bridge-url'),
@@ -166,6 +168,8 @@ const state = {
     stayAwake: false,
     turnScreenOff: false,
     rightClickBack: true,
+    touchSwipeScroll: localStorage.getItem('lb_touch_swipe') !== 'false',
+    invertTouchSwipe: localStorage.getItem('lb_invert_swipe') === 'true',
   },
 };
 
@@ -297,6 +301,7 @@ const client = new ScrcpyWebClient(dom.canvas, {
       appendLog('sys', `[scrcpy v5] Đã kết nối qua ${label} (WebCodecs Hardware Decode).`);
       toast(`Đã kết nối (${state.mode === 'webusb' ? 'WebUSB trực tiếp' : 'Wi-Fi Bridge'})!`, 'ok');
       loadAppsList();
+      setTimeout(focusPhoneKeyboard, 80);
     } else if (status === 'disconnected') {
       const wasConnected = state.connected;
       state.connecting = false;
@@ -657,6 +662,7 @@ dom.canvas.addEventListener('pointerdown', (e) => {
   if (state.connected && !state.audioMuted) {
     client.ensureAudioContext();
   }
+  resetImeBuffer();
   dom.imeProxy.focus({ preventScroll: true });
 
   if (e.button === 1) return triggerHardwareKey('HOME');
@@ -715,6 +721,65 @@ function finishPointer(e) {
 dom.canvas.addEventListener('pointerup', finishPointer);
 dom.canvas.addEventListener('pointercancel', finishPointer);
 
+// ==========================================================================
+// 2-Finger Trackpad Touch-Swipe (opens App Drawer, switches pages, scrolls)
+// ==========================================================================
+
+const POINTER_ID_WHEEL_SWIPE = -3n;
+
+const wheelSwipe = {
+  active: false,
+  startX: 0,
+  startY: 0,
+  curX: 0,
+  curY: 0,
+  screenW: 0,
+  screenH: 0,
+  rectW: 0,
+  rectH: 0,
+  peakSpeed: 0,
+  endTimer: null,
+  cooldownUntil: 0,
+};
+
+function sendWheelTouch(action, x, y, w, h) {
+  client.sendBinary(
+    encodeTouchEvent({
+      action,
+      pointerId: POINTER_ID_WHEEL_SWIPE,
+      x,
+      y,
+      screenWidth: w,
+      screenHeight: h,
+      pressure: action === MOTION_ACTION.UP ? 0.0 : 1.0,
+    })
+  );
+}
+
+function finishWheelSwipe(fromMomentumSnap = false) {
+  if (wheelSwipe.endTimer) {
+    clearTimeout(wheelSwipe.endTimer);
+    wheelSwipe.endTimer = null;
+  }
+  if (!wheelSwipe.active) return;
+  wheelSwipe.active = false;
+  showTouchDots(false, null);
+
+  if (state.connected) {
+    sendWheelTouch(
+      MOTION_ACTION.UP,
+      wheelSwipe.curX,
+      wheelSwipe.curY,
+      wheelSwipe.screenW,
+      wheelSwipe.screenH
+    );
+  }
+  if (fromMomentumSnap) {
+    // Swallow ChromeOS trackpad deceleration tail so it does not trigger a second swipe
+    wheelSwipe.cooldownUntil = performance.now() + 260;
+  }
+}
+
 dom.canvas.addEventListener(
   'wheel',
   (e) => {
@@ -723,49 +788,126 @@ dom.canvas.addEventListener(
     const pt = getPhoneCoords(e);
     if (!pt) return;
 
-    const scale = e.deltaMode === 1 ? 1.0 : 1 / 48;
-    const hScroll = Math.max(-16, Math.min(16, -e.deltaX * scale));
-    const vScroll = Math.max(-16, Math.min(16, -e.deltaY * scale));
+    if (state.demoMode) {
+      const scale = e.deltaMode === 1 ? 1.0 : 1 / 48;
+      return demo.handleScroll(Math.max(-16, Math.min(16, -e.deltaY * scale)));
+    }
 
-    if (state.demoMode) return demo.handleScroll(vScroll);
+    // Legacy Android mouse scroll mode if user turns off 2-finger touch-swipe in Settings
+    if (!state.options.touchSwipeScroll) {
+      const scale = e.deltaMode === 1 ? 1.0 : 1 / 48;
+      const hScroll = Math.max(-16, Math.min(16, -e.deltaX * scale));
+      const vScroll = Math.max(-16, Math.min(16, -e.deltaY * scale));
+      client.sendBinary(
+        encodeScrollEvent({
+          x: pt.x,
+          y: pt.y,
+          screenWidth: pt.w,
+          screenHeight: pt.h,
+          hScroll,
+          vScroll,
+          buttons: 0,
+        })
+      );
+      return;
+    }
 
-    client.sendBinary(
-      encodeScrollEvent({
-        x: pt.x,
-        y: pt.y,
-        screenWidth: pt.w,
-        screenHeight: pt.h,
-        hScroll,
-        vScroll,
-        buttons: 0,
-      })
-    );
+    // Ignore browser pinch-zoom wheel events (ctrlKey) so page doesn't zoom
+    if (e.ctrlKey) return;
+
+    const now = performance.now();
+    if (!wheelSwipe.active && now < wheelSwipe.cooldownUntil) {
+      return;
+    }
+
+    const unit = e.deltaMode === 1 ? 28 : 1;
+    const sign = state.options.invertTouchSwipe ? 1 : -1;
+    const gain = Math.max(1.5, (pt.h / Math.max(300, pt.rectH)) * 1.25);
+    const dx = sign * e.deltaX * unit * gain;
+    const dy = sign * e.deltaY * unit * gain;
+
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+    if (!wheelSwipe.active) {
+      // Pad starting touch slightly inward from screen edges so swipe has ample travel
+      const sx = Math.round(Math.max(pt.w * 0.16, Math.min(pt.w * 0.84, pt.x)));
+      const sy = Math.round(Math.max(pt.h * 0.18, Math.min(pt.h * 0.82, pt.y)));
+      wheelSwipe.active = true;
+      wheelSwipe.startX = sx;
+      wheelSwipe.startY = sy;
+      wheelSwipe.curX = sx;
+      wheelSwipe.curY = sy;
+      wheelSwipe.screenW = pt.w;
+      wheelSwipe.screenH = pt.h;
+      wheelSwipe.rectW = pt.rectW;
+      wheelSwipe.rectH = pt.rectH;
+      wheelSwipe.peakSpeed = 0;
+
+      sendWheelTouch(MOTION_ACTION.DOWN, sx, sy, pt.w, pt.h);
+    }
+
+    const nextX = Math.round(Math.max(12, Math.min(wheelSwipe.screenW - 12, wheelSwipe.curX + dx)));
+    const nextY = Math.round(Math.max(12, Math.min(wheelSwipe.screenH - 12, wheelSwipe.curY + dy)));
+    wheelSwipe.curX = nextX;
+    wheelSwipe.curY = nextY;
+
+    sendWheelTouch(MOTION_ACTION.MOVE, nextX, nextY, wheelSwipe.screenW, wheelSwipe.screenH);
+
+    // Visual dot feedback matching current virtual finger position
+    showTouchDots(true, {
+      cssX: (nextX / Math.max(1, wheelSwipe.screenW)) * wheelSwipe.rectW,
+      cssY: (nextY / Math.max(1, wheelSwipe.screenH)) * wheelSwipe.rectH,
+      rectW: wheelSwipe.rectW,
+      rectH: wheelSwipe.rectH,
+    });
+
+    const speed = Math.hypot(dx, dy);
+    wheelSwipe.peakSpeed = Math.max(wheelSwipe.peakSpeed, speed);
+    const traveled = Math.hypot(nextX - wheelSwipe.startX, nextY - wheelSwipe.startY);
+    const hitEdge =
+      nextX <= 16 || nextX >= wheelSwipe.screenW - 16 || nextY <= 16 || nextY >= wheelSwipe.screenH - 16;
+
+    // Release crisply at high velocity when user finishes a flick (triggers One UI App Drawer / page snap!)
+    const flingDistance = Math.min(wheelSwipe.screenW, wheelSwipe.screenH) * 0.44;
+    if ((traveled >= flingDistance && speed < wheelSwipe.peakSpeed * 0.38) || (traveled >= 120 && hitEdge)) {
+      finishWheelSwipe(true);
+      return;
+    }
+
+    if (wheelSwipe.endTimer) clearTimeout(wheelSwipe.endTimer);
+    wheelSwipe.endTimer = setTimeout(() => finishWheelSwipe(false), 85);
   },
   { passive: false }
 );
 
 // ==========================================================================
-// Keyboard & Vietnamese IME Input
+// Always-Ready Keyboard & ChromeOS Vietnamese Telex/VNI IME Input
 // ==========================================================================
 
 let isComposingIme = false;
+let lastImeValue = '';
 
-dom.imeProxy.addEventListener('compositionstart', () => { isComposingIme = true; });
-dom.imeProxy.addEventListener('compositionend', (e) => {
-  isComposingIme = false;
-  const text = e.data || dom.imeProxy.value;
-  dom.imeProxy.value = '';
-  if (text) sendTypedText(text);
-});
+function isTypingInWebUi(el = document.activeElement) {
+  if (!el || el === dom.imeProxy) return false;
+  if (el.closest?.('dialog[open]')) return true;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
 
-dom.imeProxy.addEventListener('input', (e) => {
-  if (isComposingIme || e.isComposing) return;
-  const text = dom.imeProxy.value;
+function focusPhoneKeyboard() {
+  if (!state.connected && !state.demoMode) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (isTypingInWebUi()) return;
+  dom.imeProxy.focus({ preventScroll: true });
+}
+
+function resetImeBuffer() {
   dom.imeProxy.value = '';
-  if (text) sendTypedText(text);
-});
+  lastImeValue = '';
+}
 
 function sendTypedText(text) {
+  if (!text) return;
   if (state.demoMode) return demo.appendText(text);
   if (!state.connected) return;
   if (/^[\x20-\x7e]+$/.test(text)) {
@@ -775,17 +917,77 @@ function sendTypedText(text) {
   }
 }
 
+function sendBackspaceCount(count) {
+  for (let i = 0; i < count; i++) {
+    if (state.demoMode) {
+      demo.handleKey('Backspace');
+    } else if (state.connected) {
+      sendKeycode(KEY_ACTION.DOWN, 67, 0);
+      sendKeycode(KEY_ACTION.UP, 67, 0);
+    }
+  }
+}
+
+function syncImeDiff(curr) {
+  const prev = lastImeValue;
+  let k = 0;
+  const minLen = Math.min(prev.length, curr.length);
+  while (k < minLen && prev[k] === curr[k]) k++;
+
+  const delCount = prev.length - k;
+  const added = curr.slice(k);
+
+  if (delCount > 0) sendBackspaceCount(delCount);
+  if (added.length > 0) sendTypedText(added);
+
+  if (!curr || /[\s\n]$/.test(curr) || curr.length > 40) {
+    resetImeBuffer();
+  } else {
+    lastImeValue = curr;
+  }
+}
+
+dom.imeProxy.addEventListener('compositionstart', () => {
+  isComposingIme = true;
+});
+
+dom.imeProxy.addEventListener('compositionend', (e) => {
+  isComposingIme = false;
+  const curr = dom.imeProxy.value;
+  if (curr) {
+    syncImeDiff(curr);
+  } else if (e.data) {
+    sendTypedText(e.data);
+  }
+});
+
+dom.imeProxy.addEventListener('input', (e) => {
+  if (isComposingIme || e.isComposing) return;
+  syncImeDiff(dom.imeProxy.value);
+});
+
 const DIRECT_CONTROL_CODES = new Set([
-  'Enter', 'NumpadEnter', 'Backspace', 'Tab', 'Escape', 'Delete',
+  'Enter', 'NumpadEnter', 'Tab', 'Escape', 'Delete',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown',
 ]);
 
-dom.imeProxy.addEventListener('keydown', async (e) => {
+async function handlePhoneKeyDown(e) {
   if (!state.connected && !state.demoMode) return;
   if (isComposingIme || e.isComposing) return;
 
+  // Backspace: let #ime-proxy handle it if buffer has pending word (for Telex), else send directly to phone
+  if (e.code === 'Backspace') {
+    if (lastImeValue.length > 0) return;
+    e.preventDefault();
+    if (state.demoMode) return demo.handleKey('Backspace');
+    sendKeycode(KEY_ACTION.DOWN, 67, getAndroidMetaState(e));
+    return;
+  }
+
+  // Ctrl+V -> pull Chromebook clipboard and paste into Samsung S26
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
     e.preventDefault();
+    resetImeBuffer();
     try {
       const clipText = await navigator.clipboard.readText();
       if (clipText) {
@@ -803,6 +1005,7 @@ dom.imeProxy.addEventListener('keydown', async (e) => {
   const isShortcut = (e.ctrlKey || e.metaKey || e.altKey) && CODE_TO_ANDROID_KEYCODE[e.code];
   if (DIRECT_CONTROL_CODES.has(e.code) || isShortcut) {
     e.preventDefault();
+    resetImeBuffer();
     const kc = CODE_TO_ANDROID_KEYCODE[e.code];
     if (!kc) return;
     if (state.demoMode) return demo.handleKey(e.code);
@@ -811,16 +1014,42 @@ dom.imeProxy.addEventListener('keydown', async (e) => {
       recordMacroLine(`key ${e.code.toUpperCase()}`);
     }
   }
-});
+}
+
+dom.imeProxy.addEventListener('keydown', handlePhoneKeyDown);
 
 dom.imeProxy.addEventListener('keyup', (e) => {
   if (!state.connected || isComposingIme) return;
+  if (e.code === 'Backspace' && lastImeValue.length === 0) {
+    return sendKeycode(KEY_ACTION.UP, 67, getAndroidMetaState(e));
+  }
   const isShortcut = (e.ctrlKey || e.metaKey || e.altKey) && CODE_TO_ANDROID_KEYCODE[e.code];
   if (DIRECT_CONTROL_CODES.has(e.code) || isShortcut) {
     const kc = CODE_TO_ANDROID_KEYCODE[e.code];
     if (kc) sendKeycode(KEY_ACTION.UP, kc, getAndroidMetaState(e));
   }
 });
+
+// Global auto-capture: whenever user starts typing while NOT inside a web input box,
+// route keyboard immediately to Samsung S26 without requiring a click on the phone canvas!
+window.addEventListener('keydown', (e) => {
+  if (!state.connected && !state.demoMode) return;
+  if (document.activeElement === dom.imeProxy) return;
+  if (isTypingInWebUi(e.target) || isTypingInWebUi(document.activeElement)) return;
+  if (document.querySelector('dialog[open]')) return;
+
+  // Focus hidden IME proxy immediately so this key and all subsequent Telex keys go to phone
+  dom.imeProxy.focus({ preventScroll: true });
+
+  // Handle control keys immediately on the first keystroke
+  if (e.code === 'Backspace' || DIRECT_CONTROL_CODES.has(e.code) || ((e.ctrlKey || e.metaKey) && CODE_TO_ANDROID_KEYCODE[e.code])) {
+    handlePhoneKeyDown(e);
+  }
+});
+
+// Keep keyboard ready after clicking phone stage or returning to tab
+window.addEventListener('focus', () => setTimeout(focusPhoneKeyboard, 30));
+document.querySelector('.stage-area')?.addEventListener('pointerup', () => setTimeout(focusPhoneKeyboard, 10));
 
 function sendKeycode(action, keycode, metaState = 0) {
   client.sendBinary(encodeKeycodeEvent(action, keycode, 0, metaState));
@@ -959,6 +1188,24 @@ function readSettingsFromForm() {
   state.options.turnScreenOff = dom.setScreenOff.checked;
   state.options.stayAwake = dom.setStayAwake.checked;
   state.options.rightClickBack = dom.setRightBack.checked;
+  if (dom.setTouchSwipe) state.options.touchSwipeScroll = dom.setTouchSwipe.checked;
+  if (dom.setInvertSwipe) state.options.invertTouchSwipe = dom.setInvertSwipe.checked;
+}
+
+if (dom.setTouchSwipe) {
+  dom.setTouchSwipe.checked = state.options.touchSwipeScroll;
+  dom.setTouchSwipe.addEventListener('change', () => {
+    state.options.touchSwipeScroll = dom.setTouchSwipe.checked;
+    localStorage.setItem('lb_touch_swipe', String(state.options.touchSwipeScroll));
+  });
+}
+
+if (dom.setInvertSwipe) {
+  dom.setInvertSwipe.checked = state.options.invertTouchSwipe;
+  dom.setInvertSwipe.addEventListener('change', () => {
+    state.options.invertTouchSwipe = dom.setInvertSwipe.checked;
+    localStorage.setItem('lb_invert_swipe', String(state.options.invertTouchSwipe));
+  });
 }
 
 dom.setBitrate.addEventListener('input', () => {
