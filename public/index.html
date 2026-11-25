@@ -3,12 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LinkBridge — Điều khiển Android siêu mượt qua Web (scrcpy + WebCodecs)</title>
-  <meta name="description" content="Điều khiển màn hình Samsung Galaxy S26 & Android qua trình duyệt với độ trễ siêu thấp bằng scrcpy v5 + WebCodecs, hỗ trợ Wi-Fi Wireless Debugging, âm thanh, clipboard và dòng lệnh." />
+  <title>LinkBridge — Điều khiển Android siêu mượt qua Web (WebUSB &amp; Wi-Fi)</title>
+  <meta name="description" content="Ứng dụng web PWA điều khiển màn hình Samsung Galaxy S26 & Android siêu mượt với độ trễ cực thấp bằng WebUSB trực tiếp trên Chrome hoặc Wi-Fi Bridge + scrcpy v5 + WebCodecs." />
+  <meta name="theme-color" content="#121419" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="./css/styles.css" />
 </head>
 <body>
   <div id="app-shell" class="app-shell">
@@ -24,7 +28,7 @@
           </div>
           <div>
             <h1 class="brand-title">LinkBridge</h1>
-            <div class="brand-sub">scrcpy v5 · WebCodecs</div>
+            <div class="brand-sub">WebUSB · Wi-Fi · scrcpy v5</div>
           </div>
         </div>
 
@@ -41,14 +45,27 @@
           </button>
         </div>
 
-        <button id="btn-open-wifi" class="btn btn-primary" title="Kết nối Samsung S26 qua Wi-Fi không cần dây USB">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <button id="btn-webusb" class="btn btn-primary" title="Kết nối Samsung S26 trực tiếp trên Chrome bằng WebUSB (không cần cài gì)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="10" cy="7" r="1"></circle>
+            <circle cx="4" cy="20" r="1"></circle>
+            <path d="M4.7 19.3 19 5"></path>
+            <path d="m21 3-3 1 2 2Z"></path>
+            <path d="M9.26 7.68 5 12l2 5"></path>
+            <path d="m10 14 5 2 3.5-3.5"></path>
+            <path d="m18 12 1-1 1 1-1 1Z"></path>
+          </svg>
+          <span>USB trực tiếp</span>
+        </button>
+
+        <button id="btn-open-wifi" class="btn" title="Kết nối Samsung S26 không dây qua Wi-Fi (cần Bridge chạy ngầm trên Chromebook)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
             <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
             <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
             <line x1="12" y1="20" x2="12.01" y2="20"></line>
           </svg>
-          <span>Kết nối Wi-Fi</span>
+          <span>Wi-Fi</span>
         </button>
 
         <button id="btn-connect-toggle" class="btn" disabled>Kết nối</button>
@@ -75,6 +92,15 @@
       </div>
 
       <div class="topbar-right">
+        <button id="btn-install-pwa" class="btn" style="display:none;" title="Cài LinkBridge thành ứng dụng cửa sổ riêng trên Chromebook">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Cài App</span>
+        </button>
+
         <select id="preset-select" class="select-box" style="height: 32px; font-size: 12px;" title="Cấu hình tốc độ / chất lượng">
           <option value="ultra120">Siêu mượt 120 FPS (1080p)</option>
           <option value="balanced60" selected>Cân bằng 60 FPS (1080p)</option>
@@ -126,35 +152,34 @@
               <div id="screen-overlay" class="screen-overlay">
                 <div class="overlay-icon">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
-                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                    <rect x="6" y="2" width="12" height="20" rx="2.5"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
                   </svg>
                 </div>
-                <h2 id="overlay-title" class="overlay-title">Sẵn sàng kết nối Samsung S26</h2>
+                <h2 id="overlay-title" class="overlay-title">Điều khiển Samsung Galaxy S26</h2>
                 <p id="overlay-desc" class="overlay-desc">
-                  Không cần dây USB — kết nối trực tiếp qua Gỡ lỗi không dây (Wi-Fi) trên cùng mạng với Chromebook.
+                  Chọn <strong>USB trực tiếp</strong> (chạy 100% trên trình duyệt, không cần cài gì) hoặc <strong>Wi-Fi không dây</strong> (khi chạy Bridge ngầm trên Chromebook).
                 </p>
 
                 <div class="setup-steps">
                   <div class="setup-step">
                     <span class="setup-step-num">1</span>
-                    <div>Trên Samsung S26: <strong>Cài đặt → Thông tin ĐT → Thông tin phần mềm</strong>, chạm 7 lần vào <strong>Số hiệu bản tạo</strong>.</div>
+                    <div>Trên Samsung S26: bật <strong>Tùy chọn nhà phát triển → Gỡ lỗi USB</strong> (hoặc <strong>Gỡ lỗi không dây</strong>).</div>
                   </div>
                   <div class="setup-step">
                     <span class="setup-step-num">2</span>
-                    <div>Vào <strong>Tùy chọn nhà phát triển → Gỡ lỗi không dây</strong> rồi bật lên.</div>
+                    <div><strong>Dùng ngay không cài gì:</strong> cắm cáp USB rồi bấm <strong>Kết nối USB trực tiếp</strong> (không bấm "Kết nối với Linux" trên ChromeOS).</div>
                   </div>
                   <div class="setup-step">
                     <span class="setup-step-num">3</span>
-                    <div>Chọn <strong>Ghép nối bằng mã</strong> và nhập vào nút <strong>Kết nối Wi-Fi</strong> bên dưới.</div>
+                    <div><strong>Dùng không dây Wi-Fi:</strong> chạy <code>./install-app.sh</code> 1 lần trên Crostini rồi bấm <strong>Kết nối Wi-Fi</strong>.</div>
                   </div>
                 </div>
 
                 <div class="overlay-actions">
-                  <button id="btn-overlay-wifi" class="btn btn-primary">Ghép nối Samsung S26 qua Wi-Fi</button>
-                  <button id="btn-overlay-demo" class="btn">Chạy thử chế độ Mô phỏng (Test UI)</button>
+                  <button id="btn-overlay-webusb" class="btn btn-primary">Kết nối USB trực tiếp (Không cần cài)</button>
+                  <button id="btn-overlay-wifi" class="btn">Ghép nối không dây qua Wi-Fi</button>
+                  <button id="btn-overlay-demo" class="btn btn-ghost">Chạy thử chế độ Mô phỏng (Test UI)</button>
                 </div>
               </div>
             </div>
@@ -300,7 +325,7 @@
             </div>
           </div>
 
-          <!-- TAB 4: STREAM SETTINGS & CROSTINI CLI INFO -->
+          <!-- TAB 4: STREAM SETTINGS & BRIDGE CONFIG -->
           <div id="pane-settings" class="tab-pane">
             <div class="pane-scroll">
               <div class="section-card">
@@ -353,17 +378,27 @@
               </div>
 
               <div class="section-card">
-                <h3 class="section-title">Điều khiển từ Terminal Crostini</h3>
+                <h3 class="section-title">
+                  <span>Cấu hình Wi-Fi Bridge (Crostini)</span>
+                  <span id="bridge-status-tag" style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);">Đang kiểm tra...</span>
+                </h3>
                 <p class="section-desc">
-                  Khi web đang mở luồng, mọi lệnh CLI dưới đây chạy thẳng qua kênh scrcpy với độ trễ &lt; 5ms:
+                  Khi mở trang web từ GitHub Pages, Bridge chạy ngầm trên Chromebook Crostini sẽ giúp kết nối không dây Wi-Fi.
                 </p>
+                <div class="row-actions">
+                  <input id="set-bridge-url" class="input-field" placeholder="http://127.0.0.1:3000" />
+                  <button id="btn-save-bridge" class="btn btn-sm">Lưu</button>
+                </div>
+              </div>
+
+              <div class="section-card">
+                <h3 class="section-title">Điều khiển từ Terminal Crostini</h3>
                 <div class="tip-box" style="font-family: var(--font-mono); font-size: 11px; user-select: text;">
                   ./bin/phone-ctl tap 540 1200<br />
                   ./bin/phone-ctl swipe 540 1800 540 500<br />
                   ./bin/phone-ctl text "Xin chào Samsung S26"<br />
                   ./bin/phone-ctl key HOME<br />
-                  ./bin/phone-ctl screen off<br />
-                  ./bin/phone-ctl shell "dumpsys battery"
+                  ./bin/phone-ctl screen off
                 </div>
               </div>
             </div>
@@ -376,10 +411,15 @@
   <!-- Wireless Debugging Modal -->
   <dialog id="wifi-modal" class="modal">
     <div class="modal-header">
-      <h2>Kết nối không dây (Samsung Galaxy S26)</h2>
+      <h2>Kết nối không dây Wi-Fi (Samsung Galaxy S26)</h2>
       <button id="btn-close-wifi" class="btn btn-ghost btn-icon btn-sm" aria-label="Đóng">✕</button>
     </div>
     <div class="modal-body">
+      <div id="wifi-bridge-warn" class="tip-box" style="display:none; border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.08);">
+        <strong>Chưa bật Bridge Wi-Fi trên Chromebook:</strong> Trình duyệt Chrome không thể tự quét Wi-Fi LAN nếu không có Bridge chạy ngầm. Chạy 1 lần duy nhất trong Linux Crostini:<br />
+        <code style="display:block; margin-top:6px; user-select:text; color:#f1f3f7;">git clone https://github.com/lelinh1041999-sudo/linkbridge-android-web.git &amp;&amp; cd linkbridge-android-web &amp;&amp; ./install-app.sh</code>
+      </div>
+
       <div class="modal-tabs" role="tablist">
         <button class="modal-tab active" data-mtab="pair">Ghép nối mới</button>
         <button class="modal-tab" data-mtab="connect">Kết nối nhanh</button>
@@ -389,7 +429,7 @@
       <!-- Pane A: Pair & Connect -->
       <div id="mpane-pair" class="modal-pane active">
         <div class="tip-box">
-          Trên <strong>Samsung S26</strong>: vào <strong>Cài đặt → Tùy chọn nhà phát triển → Gỡ lỗi không dây</strong>, bấm vào <strong>Ghép nối thiết bị bằng mã ghép nối</strong> rồi nhập 2 dòng bên dưới:
+          Trên <strong>Samsung S26</strong>: vào <strong>Cài đặt → Tùy chọn nhà phát triển → Gỡ lỗi không dây</strong>, bấm <strong>Ghép nối thiết bị bằng mã ghép nối</strong> rồi nhập:
         </div>
         <div class="form-grid">
           <div class="form-field">
@@ -404,7 +444,7 @@
         <button id="btn-do-pair" class="btn btn-primary">1. Ghép nối (adb pair)</button>
 
         <div class="form-field">
-          <label class="form-label" for="pair-connect-addr">2. Địa chỉ IP &amp; Cổng chính (hiển thị ở màn Gỡ lỗi không dây)</label>
+          <label class="form-label" for="pair-connect-addr">2. Địa chỉ IP &amp; Cổng chính (ngoài màn Gỡ lỗi không dây)</label>
           <input id="pair-connect-addr" class="input-field" placeholder="192.168.1.25:41289" />
         </div>
         <button id="btn-do-pair-connect" class="btn">2. Kết nối ngay (adb connect)</button>
@@ -413,7 +453,7 @@
       <!-- Pane B: Quick Connect -->
       <div id="mpane-connect" class="modal-pane">
         <div class="tip-box">
-          Nếu Samsung S26 đã ghép nối với Chromebook trước đó, chỉ cần mở <strong>Gỡ lỗi không dây</strong> và nhập <strong>Địa chỉ IP và cổng</strong> đang hiển thị:
+          Nếu Samsung S26 đã ghép nối với Chromebook trước đó, chỉ cần mở <strong>Gỡ lỗi không dây</strong> và nhập <strong>IP:Port</strong> đang hiển thị:
         </div>
         <div class="form-field">
           <label class="form-label" for="quick-connect-addr">IP:Port</label>
@@ -425,7 +465,7 @@
       <!-- Pane C: USB to Wi-Fi -->
       <div id="mpane-tcpip" class="modal-pane">
         <div class="tip-box">
-          Nếu bạn đang cắm cáp USB vào Chromebook (và đã bấm <strong>Kết nối với Linux</strong> trong thông báo ChromeOS), bấm nút dưới để mở cổng Wi-Fi <code>5555</code> rồi rút cáp ra dùng không dây.
+          Nếu đang cắm cáp USB vào Linux Crostini, bấm nút dưới để mở cổng Wi-Fi <code>5555</code> rồi rút cáp ra dùng không dây.
         </div>
         <button id="btn-do-tcpip" class="btn btn-primary">Chuyển thiết bị USB sang Wi-Fi (cổng 5555)</button>
       </div>
@@ -436,6 +476,6 @@
 
   <div id="toast-container" class="toast-container"></div>
 
-  <script type="module" src="/js/app.js"></script>
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>

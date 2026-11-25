@@ -1,86 +1,57 @@
-# LinkBridge — Điều khiển Samsung Galaxy S26 siêu mượt qua Web (Chromebook Crostini)
+# LinkBridge — Điều khiển Samsung Galaxy S26 siêu mượt qua Web (PWA · WebUSB · Wi-Fi)
 
-Ứng dụng web điều khiển màn hình điện thoại Android với **độ trễ siêu thấp (~20–40ms)**, hoạt động không dây qua **Wi-Fi (Wireless Debugging)**, tương thích tối ưu cho **Chromebook (Linux Crostini)** + **Samsung Galaxy S26**.
+Mở trực tiếp trên Chrome (không cần cài gì):
+**👉 https://lelinh1041999-sudo.github.io/linkbridge-android-web/**
 
-## Điểm nổi bật
-- **Không cần dây USB**: Hỗ trợ ghép nối **Gỡ lỗi không dây (Wireless Debugging)** ngay trên giao diện web (hoặc chuyển từ USB sang Wi-Fi bằng 1 nút).
-- **Độ trễ cực thấp (60–120 FPS)**: Dùng `scrcpy-server v5.0.1` nén H.264 phần cứng trực tiếp trên chip Samsung S26 + giải mã GPU trên ChromeOS bằng **WebCodecs (`VideoDecoder`)**, tắt Nagle TCP & tắt nén WebSocket.
-- **Âm thanh trực tiếp (Opus + AudioWorklet)**: Truyền âm thanh từ điện thoại lên loa Chromebook đồng bộ độ trễ thấp.
-- **Thao tác đầy đủ như Phone Link**:
-  - Chạm, vuốt, cuộn mượt bằng touchpad/chuột Chromebook.
-  - Giữ `Ctrl + kéo` để phóng to / thu nhỏ đa điểm (pinch-to-zoom).
-  - Chuột phải = Back, Chuột giữa = Home.
-  - Gõ bàn phím Chromebook thẳng vào điện thoại (**hỗ trợ gõ Tiếng Việt có dấu Telex/VNI**).
-  - Đồng bộ Clipboard 2 chiều.
-  - **Tắt màn hình OLED trên điện thoại** để tiết kiệm pin trong khi vẫn xem và điều khiển bình thường trên web.
-- **Điều khiển bằng Lệnh + Macro + CLI**:
-  - Khung **Console** ngay trên web hỗ trợ lệnh nhanh (`tap`, `swipe`, `text`, `key`, `app`, `screen off`) và mọi lệnh `adb shell`.
-  - **Ghi Macro (Macro Recorder)**: Chạm/vuốt lên màn hình để tự sinh kịch bản, chạy lại 1 chạm hoặc copy ra bash script.
-  - **CLI `./bin/phone-ctl` & REST API**: Khi web đang mở luồng, lệnh CLI bơm thẳng qua socket scrcpy với độ trễ **< 5ms** (nhanh hơn `adb shell input` gấp trăm lần).
+Ứng dụng web PWA điều khiển màn hình **Samsung Galaxy S26 & Android** với độ trễ siêu thấp (~20–40ms, lên tới 120 FPS), dùng **scrcpy-server v5.0.1** + giải mã GPU **WebCodecs**, hỗ trợ **2 chế độ linh hoạt**:
 
 ---
 
-## Cài đặt & Chạy trên Chromebook (Linux Crostini)
+## Cách 1: Dùng ngay trên Web (100% không cần cài gì — qua cáp USB)
+1. Mở trang web **https://lelinh1041999-sudo.github.io/linkbridge-android-web/** bằng Chrome trên Chromebook (hoặc Windows/macOS).
+2. Bấm nút **Cài App** trên góc phải (nếu muốn ghim thành cửa sổ app riêng giống Phone Link).
+3. Trên **Samsung S26**: bật **Tùy chọn nhà phát triển → Gỡ lỗi USB (USB debugging)**.
+4. Cắm cáp USB vào Chromebook *(lưu ý: nếu ChromeOS hiện thông báo "Kết nối với Linux", hãy **bỏ qua / không bấm** để Chrome lấy quyền WebUSB trực tiếp)*.
+5. Bấm **USB trực tiếp** trên web → chọn Samsung S26 → bấm **Cho phép (Allow)** trên điện thoại là điều khiển ngay!
 
-### Bước 1: Tải về & Cài đặt (chỉ cần chạy 1 lần)
-Mở ứng dụng **Terminal (Linux)** trên Chromebook và chạy:
+---
+
+## Cách 2: Cài thành App Chromebook + Điều khiển KHÔNG DÂY qua Wi-Fi
+Trình duyệt Chrome chặn trang web ngoài internet tự quét Wi-Fi LAN vì bảo mật, nên để dùng **Wi-Fi không dây** mà không phải gõ lệnh mỗi lần mở máy, hãy cài dịch vụ nền + icon App **1 lần duy nhất** trên Linux Crostini:
 
 ```bash
 git clone https://github.com/lelinh1041999-sudo/linkbridge-android-web.git
 cd linkbridge-android-web
-chmod +x setup.sh start.sh bin/phone-ctl
-./setup.sh
+./install-app.sh
 ```
 
-### Bước 2: Khởi động
-```bash
-./start.sh
-```
+Sau khi chạy xong:
+- Bridge Wi-Fi sẽ **tự chạy ngầm** mỗi khi Linux Crostini bật (không cần mở Terminal nữa).
+- Biểu tượng **LinkBridge** xuất hiện ngay trong **App Launcher (Linux apps)** của Chromebook.
+- Bạn có thể mở bằng icon App (`http://localhost:3000`) **HOẶC** mở ngay trang web **https://lelinh1041999-sudo.github.io/linkbridge-android-web/** — cả hai đều tự nhận Bridge Wi-Fi để điều khiển Samsung S26 không dây!
 
-Sau đó mở trình duyệt **Chrome** của Chromebook và truy cập:
-**`http://localhost:3000`** *(ChromeOS tự động chuyển tiếp `localhost:3000` từ Linux Crostini ra Chrome).*
+### Ghép nối Samsung S26 không dây (chỉ cần làm lần đầu)
+1. Đảm bảo Chromebook và Samsung S26 chung mạng Wi-Fi.
+2. Trên **Samsung S26**: vào **Cài đặt → Tùy chọn nhà phát triển → Gỡ lỗi không dây (Wireless debugging)** và bật lên.
+3. Trên web, bấm nút **Wi-Fi** → trên S26 bấm **Ghép nối thiết bị bằng mã ghép nối** → nhập **IP:Port ghép nối** + **Mã 6 số** vào bước 1, rồi nhập **IP:Port chính** ở bước 2.
 
 ---
 
-## Cách kết nối Samsung Galaxy S26 không cần dây USB
+## Tính năng nổi bật
+- **Siêu mượt 60–120 FPS**: Nén H.264 phần cứng trên S26 + giải mã GPU WebCodecs trên Chromebook, truyền âm thanh Opus độ trễ thấp.
+- **Thao tác như Phone Link**: Chạm, vuốt, cuộn touchpad, `Ctrl + kéo` để zoom 2 ngón, chuột phải = Back, gõ **Tiếng Việt Telex/VNI**, đồng bộ Clipboard 2 chiều, **tắt màn hình OLED vật lý trên S26** khi đang điều khiển.
+- **Lệnh Console + Ghi Macro + CLI**:
+  - Chạy lệnh nhanh (`tap`, `swipe`, `text`, `key`, `app`, `screen off`) hoặc mọi lệnh `adb shell` ngay trên web (hoạt động trên cả **WebUSB** lẫn **Wi-Fi**!).
+  - **Ghi Macro**: Chạm/vuốt trên màn hình để tự sinh kịch bản và chạy lại tự động.
+  - **CLI Crostini (`phone-ctl`)**:
+    ```bash
+    phone-ctl tap 540 1200
+    phone-ctl swipe 540 1800 540 500 250
+    phone-ctl text "Xin chào từ Chromebook!"
+    phone-ctl key HOME
+    phone-ctl screen off
+    phone-ctl screenshot s26.png
+    phone-ctl shell "dumpsys battery"
+    ```
 
-> Đảm bảo Chromebook và Samsung S26 đang nối chung một mạng Wi-Fi.
-
-1. Trên **Samsung S26**, vào **Cài đặt → Thông tin điện thoại → Thông tin phần mềm**, chạm **7 lần** vào **Số hiệu bản tạo (Build number)** để bật *Tùy chọn nhà phát triển*.
-2. Quay ra **Cài đặt → Tùy chọn nhà phát triển → Gỡ lỗi không dây (Wireless debugging)** và bật lên.
-3. Trên giao diện web `http://localhost:3000`, bấm nút **Kết nối Wi-Fi**.
-4. Trên Samsung S26, bấm **Ghép nối thiết bị bằng mã ghép nối** → nhập **IP:Port ghép nối** và **Mã 6 chữ số** vào mục **1. Ghép nối** trên web.
-5. Nhập **IP:Port chính** (hiện ở ngoài màn hình *Gỡ lỗi không dây*) vào mục **2. Kết nối ngay** → Màn hình S26 sẽ hiện lên ngay lập tức!
-
----
-
-## Điều khiển từ Terminal Crostini (`./bin/phone-ctl`)
-
-```bash
-# Chạm tọa độ (x, y) — độ trễ < 5ms khi đang mở web
-./bin/phone-ctl tap 540 1200
-
-# Vuốt từ dưới lên trên
-./bin/phone-ctl swipe 540 1800 540 500 250
-
-# Nhập chữ Tiếng Việt có dấu
-./bin/phone-ctl text "Xin chào từ Chromebook!"
-
-# Bấm phím cứng / điều hướng
-./bin/phone-ctl key HOME
-./bin/phone-ctl key BACK
-./bin/phone-ctl key POWER
-
-# Tắt / Bật màn hình OLED vật lý trên điện thoại
-./bin/phone-ctl screen off
-./bin/phone-ctl screen on
-
-# Mở ứng dụng
-./bin/phone-ctl app com.android.chrome
-
-# Chụp ảnh màn hình chất lượng gốc
-./bin/phone-ctl screenshot s26.png
-
-# Chạy lệnh adb shell bất kỳ
-./bin/phone-ctl shell "dumpsys battery"
-```
+Gỡ bỏ dịch vụ nền & icon bất cứ lúc nào: `./uninstall-app.sh`.

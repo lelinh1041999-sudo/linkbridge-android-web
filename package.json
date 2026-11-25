@@ -5,7 +5,8 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "build:webusb": "esbuild src/webusb-driver.js --bundle --format=esm --target=chrome110 --minify --outfile=public/js/webusb-driver.js"
   },
   "dependencies": {
     "express": "^4.21.2",
@@ -13,5 +14,12 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@yume-chan/adb": "^2.6.4",
+    "@yume-chan/adb-credential-web": "^2.1.0",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2",
+    "@yume-chan/stream-extra": "^2.6.1",
+    "esbuild": "^0.28.2"
   }
 }

@@ -1,5 +1,8 @@
 /**
  * Client-side scrcpy v5.0.1 binary control encoder + WebCodecs H.264 & Opus ultra-low-latency decoder.
+ * Supports BOTH:
+ *   1. Local / Crostini Wi-Fi Bridge (WebSocket binary stream)
+ *   2. Direct Browser WebUSB (100% browser-only, zero server install on GitHub Pages)
  */
 
 export const MOTION_ACTION = {
@@ -138,6 +141,14 @@ function concatUint8(a, b) {
   return out;
 }
 
+function toWsBase(httpBase) {
+  if (!httpBase) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}`;
+  }
+  return httpBase.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://').replace(/\/+$/, '');
+}
+
 /**
  * WebCodecs Hardware VideoDecoder + AudioDecoder (Opus -> AudioWorklet) client.
  */
@@ -147,7 +158,9 @@ export class ScrcpyWebClient {
     this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     this.cb = callbacks;
 
+    this.transportMode = null; // 'ws' | 'webusb'
     this.ws = null;
+    this.webUsbDriver = null;
     this.serial = null;
     this.width = 0;
     this.height = 0;
@@ -158,7 +171,7 @@ export class ScrcpyWebClient {
     this.awaitingKeyFrame = true;
     this.latestFrame = null;
     this.rafId = null;
-    this.decodeTimes = new Map(); // timestamp -> performance.now()
+    this.decodeTimes = new Map();
     this.smoothedLatencyMs = 0;
     this.renderedFramesSec = 0;
     this.localFps = 0;
@@ -177,12 +190,28 @@ export class ScrcpyWebClient {
     return typeof window !== 'undefined' && typeof window.VideoDecoder === 'function';
   }
 
-  connect(serial, options = {}, forceRestart = false) {
+  _startLoops() {
+    this._startRenderLoop();
+    if (this.fpsTimer) clearInterval(this.fpsTimer);
+    this.fpsTimer = setInterval(() => {
+      this.localFps = this.renderedFramesSec;
+      this.renderedFramesSec = 0;
+      this.cb.onLocalStats?.({
+        localFps: this.localFps,
+        decodeLatencyMs: Math.round(this.smoothedLatencyMs),
+      });
+    }, 1000);
+  }
+
+  /**
+   * Mode 1: Connect via local/Crostini Bridge WebSocket (Wi-Fi or Bridge USB).
+   */
+  connect(serial, options = {}, forceRestart = false, bridgeBase = '') {
     this.disconnect();
+    this.transportMode = 'ws';
     this.serial = serial;
     this.audioEnabled = options.audio !== false;
 
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const params = new URLSearchParams({
       maxSize: String(options.maxSize || 1080),
       bitRate: String(options.bitRate || 8_000_000),
@@ -194,21 +223,12 @@ export class ScrcpyWebClient {
       restart: String(Boolean(forceRestart)),
     });
 
-    const url = `${proto}//${location.host}/ws/device/${encodeURIComponent(serial)}?${params}`;
+    const url = `${toWsBase(bridgeBase)}/ws/device/${encodeURIComponent(serial)}?${params}`;
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
     this.ws = ws;
 
-    this._startRenderLoop();
-
-    this.fpsTimer = setInterval(() => {
-      this.localFps = this.renderedFramesSec;
-      this.renderedFramesSec = 0;
-      this.cb.onLocalStats?.({
-        localFps: this.localFps,
-        decodeLatencyMs: Math.round(this.smoothedLatencyMs),
-      });
-    }, 1000);
+    this._startLoops();
 
     ws.onopen = () => {
       this.cb.onStatus?.('connecting', 'Đang khởi động luồng video trên điện thoại...');
@@ -217,8 +237,7 @@ export class ScrcpyWebClient {
     ws.onmessage = (event) => {
       if (typeof event.data === 'string') {
         try {
-          const msg = JSON.parse(event.data);
-          this._handleJsonMessage(msg);
+          this._handleJsonMessage(JSON.parse(event.data));
         } catch {}
         return;
       }
@@ -226,7 +245,7 @@ export class ScrcpyWebClient {
     };
 
     ws.onerror = () => {
-      this.cb.onError?.('Lỗi kết nối WebSocket tới máy chủ cục bộ.');
+      this.cb.onError?.('Lỗi kết nối WebSocket tới Bridge server.');
     };
 
     ws.onclose = () => {
@@ -237,21 +256,36 @@ export class ScrcpyWebClient {
     };
   }
 
+  /**
+   * Mode 2: Attach directly to a browser WebUSB scrcpy driver (zero server hop!).
+   */
+  attachWebUsb(driver, options = {}) {
+    this.disconnect();
+    this.transportMode = 'webusb';
+    this.webUsbDriver = driver;
+    this.audioEnabled = options.audio !== false;
+    this._startLoops();
+  }
+
+  applyMeta(meta) {
+    if (meta.width > 0 && meta.height > 0) {
+      this.width = meta.width;
+      this.height = meta.height;
+      if (this.canvas.width !== meta.width || this.canvas.height !== meta.height) {
+        this.canvas.width = meta.width;
+        this.canvas.height = meta.height;
+      }
+    }
+    this.cb.onMeta?.(meta);
+  }
+
   _handleJsonMessage(msg) {
     switch (msg.type) {
       case 'status':
         this.cb.onStatus?.(msg.status, msg.reason || '');
         break;
       case 'meta':
-        if (msg.width > 0 && msg.height > 0) {
-          this.width = msg.width;
-          this.height = msg.height;
-          if (this.canvas.width !== msg.width || this.canvas.height !== msg.height) {
-            this.canvas.width = msg.width;
-            this.canvas.height = msg.height;
-          }
-        }
-        this.cb.onMeta?.(msg);
+        this.applyMeta(msg);
         break;
       case 'stats':
         this.cb.onServerStats?.(msg);
@@ -282,15 +316,15 @@ export class ScrcpyWebClient {
     const payload = new Uint8Array(arrayBuffer, 10);
 
     if (frameType === 0x01) {
-      this._handleVideoPacket(flags, pts, payload);
+      this.handleVideoPacket(flags, pts, payload);
     } else if (frameType === 0x02) {
-      this._handleAudioPacket(flags, pts, payload);
+      this.handleAudioPacket(flags, pts, payload);
     }
   }
 
   _initVideoDecoder(codecString) {
     if (!ScrcpyWebClient.isWebCodecsSupported()) {
-      this.cb.onError?.('Trình duyệt không hỗ trợ WebCodecs. Hãy mở bằng Chrome trên Chromebook.');
+      this.cb.onError?.('Trình duyệt không hỗ trợ WebCodecs. Hãy mở bằng Chrome.');
       return;
     }
 
@@ -310,7 +344,6 @@ export class ScrcpyWebClient {
           this.decodeTimes.delete(frame.timestamp);
           this.smoothedLatencyMs = this.smoothedLatencyMs === 0 ? dt : this.smoothedLatencyMs * 0.8 + dt * 0.2;
         }
-        // Keep strictly the newest frame so display latency never accumulates
         if (this.latestFrame) {
           this.latestFrame.close();
         }
@@ -319,7 +352,6 @@ export class ScrcpyWebClient {
       error: (err) => {
         console.warn('[VideoDecoder error]', err);
         this.awaitingKeyFrame = true;
-        // Request a fresh IDR keyframe on decoder recovery
         this.sendJson({ type: 'reset_video' });
       },
     });
@@ -331,7 +363,7 @@ export class ScrcpyWebClient {
     });
   }
 
-  _handleVideoPacket(flags, pts, payload) {
+  handleVideoPacket(flags, pts, payload) {
     const isConfig = (flags & 1) !== 0;
     const isKeyFrame = (flags & 2) !== 0;
 
@@ -343,19 +375,11 @@ export class ScrcpyWebClient {
     }
 
     if (!this.videoDecoder || this.videoDecoder.state !== 'configured') return;
-
-    if (this.awaitingKeyFrame && !isKeyFrame) {
-      return; // Wait for the first IDR keyframe after configure
-    }
-
-    // Drop delta frames if hardware decoder queue backs up (> 3 frames) to guarantee low latency
-    if (!isKeyFrame && this.videoDecoder.decodeQueueSize > 3) {
-      return;
-    }
+    if (this.awaitingKeyFrame && !isKeyFrame) return;
+    if (!isKeyFrame && this.videoDecoder.decodeQueueSize > 3) return;
 
     let chunkData = payload;
     if (isKeyFrame && this.lastConfigBytes) {
-      // Prepend Annex-B SPS/PPS to every keyframe for instant recovery & rotation stability
       chunkData = concatUint8(this.lastConfigBytes, payload);
       this.awaitingKeyFrame = false;
     }
@@ -384,7 +408,7 @@ export class ScrcpyWebClient {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
       this.audioCtx = new AC({ sampleRate: 48000, latencyHint: 'interactive' });
-      await this.audioCtx.audioWorklet.addModule('/js/audio-worklet.js');
+      await this.audioCtx.audioWorklet.addModule('./js/audio-worklet.js');
       this.audioWorkletNode = new AudioWorkletNode(this.audioCtx, 'low-latency-pcm', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
@@ -432,11 +456,8 @@ export class ScrcpyWebClient {
 
           if (fmt.endsWith('-planar')) {
             audioData.copyTo(left, { planeIndex: 0, format: 'f32-planar' });
-            if (channels > 1) {
-              audioData.copyTo(right, { planeIndex: 1, format: 'f32-planar' });
-            } else {
-              right.set(left);
-            }
+            if (channels > 1) audioData.copyTo(right, { planeIndex: 1, format: 'f32-planar' });
+            else right.set(left);
           } else {
             const interleaved = new Float32Array(frames * channels);
             audioData.copyTo(interleaved, { planeIndex: 0, format: 'f32' });
@@ -446,9 +467,7 @@ export class ScrcpyWebClient {
             }
           }
           this.audioWorkletNode.port.postMessage({ type: 'pcm', left, right }, [left.buffer, right.buffer]);
-        } catch {
-          // Ignore transient format mismatch
-        } finally {
+        } catch {} finally {
           audioData.close();
         }
       },
@@ -457,18 +476,14 @@ export class ScrcpyWebClient {
       },
     });
 
-    const config = {
-      codec: 'opus',
-      sampleRate: 48000,
-      numberOfChannels: 2,
-    };
+    const config = { codec: 'opus', sampleRate: 48000, numberOfChannels: 2 };
     if (opusHeadBytes && opusHeadBytes.length >= 19) {
       config.description = opusHeadBytes;
     }
     this.audioDecoder.configure(config);
   }
 
-  _handleAudioPacket(flags, pts, payload) {
+  handleAudioPacket(flags, pts, payload) {
     if (!this.audioEnabled) return;
     const isConfig = (flags & 1) !== 0;
 
@@ -476,20 +491,14 @@ export class ScrcpyWebClient {
       this._initAudioDecoder(payload);
       return;
     }
-
     if (!this.audioDecoder) {
       this._initAudioDecoder(null);
     }
-    if (!this.audioDecoder || this.audioDecoder.state !== 'configured') return;
-    if (this.audioMuted) return;
+    if (!this.audioDecoder || this.audioDecoder.state !== 'configured' || this.audioMuted) return;
 
     try {
       this.audioDecoder.decode(
-        new EncodedAudioChunk({
-          type: 'key',
-          timestamp: pts,
-          data: payload,
-        })
+        new EncodedAudioChunk({ type: 'key', timestamp: pts, data: payload })
       );
     } catch {}
   }
@@ -517,6 +526,9 @@ export class ScrcpyWebClient {
   }
 
   sendBinary(arrayBuffer) {
+    if (this.transportMode === 'webusb' && this.webUsbDriver) {
+      return this.webUsbDriver.sendBinary(arrayBuffer);
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(arrayBuffer);
       return true;
@@ -525,6 +537,9 @@ export class ScrcpyWebClient {
   }
 
   sendJson(obj) {
+    if (this.transportMode === 'webusb' && this.webUsbDriver) {
+      return this.webUsbDriver.sendJson(obj);
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(obj));
       return true;
@@ -561,6 +576,8 @@ export class ScrcpyWebClient {
       this.ws = null;
       try { old.close(); } catch {}
     }
+    this.webUsbDriver = null;
+    this.transportMode = null;
     this.lastConfigBytes = null;
     this.awaitingKeyFrame = true;
     this.smoothedLatencyMs = 0;

@@ -1,0 +1,31 @@
+{
+  "name": "LinkBridge — Điều khiển Android siêu mượt",
+  "short_name": "LinkBridge",
+  "description": "Điều khiển màn hình Samsung Galaxy S26 & Android siêu mượt qua WebUSB hoặc Wi-Fi với WebCodecs + Console lệnh.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0c0f",
+  "theme_color": "#121419",
+  "orientation": "any",
+  "categories": ["utilities", "productivity", "developer"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
