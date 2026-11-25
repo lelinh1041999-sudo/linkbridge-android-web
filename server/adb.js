@@ -117,7 +117,7 @@ async function getDeviceMeta(serial) {
     'echo "SDK=$(getprop ro.build.version.sdk)"',
     'echo "SIZE=$(wm size 2>/dev/null | tail -n 1)"',
     'echo "BAT=$(dumpsys battery 2>/dev/null | grep -E \"level:|status:\" | tr \"\\n\" \" \")"',
-    'echo "IP=$(ip route 2>/dev/null | awk \'/src/ {for(i=1;i<=NF;i++) if($i==\"src\") print $(i+1)}\' | head -n 1)"',
+    'echo "IP=$( (ip -4 addr show swlan0 2>/dev/null; ip -4 addr show wlan0 2>/dev/null; ip -4 addr show ap0 2>/dev/null) | awk \'/inet / {sub(/\\/.*/, \"\", $2); print $2; exit}\' )"',
   ].join('; ');
 
   const res = await execAdb(['-s', serial, 'shell', cmd], { timeout: 5000 });
