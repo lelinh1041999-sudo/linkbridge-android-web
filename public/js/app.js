@@ -1921,10 +1921,10 @@ const openAiModal = () => {
   $('ai-feedback').className = 'modal-feedback';
   $('ai-modal').showModal();
 };
-$('btn-ai-bridge').addEventListener('click', openAiModal);
+$('btn-ai-bridge')?.addEventListener('click', openAiModal);
 $('btn-ai-bridge-chip')?.addEventListener('click', openAiModal);
-$('btn-close-ai').addEventListener('click', () => $('ai-modal').close());
-$('ai-modal').addEventListener('click', (e) => { if (e.target === $('ai-modal')) $('ai-modal').close(); });
+$('btn-close-ai')?.addEventListener('click', () => $('ai-modal').close());
+$('ai-modal')?.addEventListener('click', (e) => { if (e.target === $('ai-modal')) $('ai-modal').close(); });
 
 $('btn-ai-toggle').addEventListener('click', () => {
   if (aiBridge.connected) aiBridge.disconnect();
