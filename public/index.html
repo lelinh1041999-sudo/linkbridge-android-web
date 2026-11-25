@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkBridge — Điều khiển Android siêu mượt qua Web (scrcpy + WebCodecs)</title>
+  <meta name="description" content="Điều khiển màn hình Samsung Galaxy S26 & Android qua trình duyệt với độ trễ siêu thấp bằng scrcpy v5 + WebCodecs, hỗ trợ Wi-Fi Wireless Debugging, âm thanh, clipboard và dòng lệnh." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="app-shell" class="app-shell">
+    <!-- Top Command Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="2" width="12" height="20" rx="2.5"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </div>
+          <div>
+            <h1 class="brand-title">LinkBridge</h1>
+            <div class="brand-sub">scrcpy v5 · WebCodecs</div>
+          </div>
+        </div>
+
+        <div class="device-picker">
+          <span id="conn-dot" class="status-dot" title="Trạng thái kết nối"></span>
+          <select id="device-select" class="select-clean" aria-label="Chọn thiết bị Android">
+            <option value="">Đang tìm thiết bị...</option>
+          </select>
+          <button id="btn-refresh-devices" class="btn btn-ghost btn-icon btn-sm" title="Làm mới danh sách thiết bị">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"></path>
+              <path d="M21 3v5h-5"></path>
+            </svg>
+          </button>
+        </div>
+
+        <button id="btn-open-wifi" class="btn btn-primary" title="Kết nối Samsung S26 qua Wi-Fi không cần dây USB">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+            <line x1="12" y1="20" x2="12.01" y2="20"></line>
+          </svg>
+          <span>Kết nối Wi-Fi</span>
+        </button>
+
+        <button id="btn-connect-toggle" class="btn" disabled>Kết nối</button>
+      </div>
+
+      <div class="topbar-center">
+        <div class="telemetry-strip" aria-label="Thông số luồng thời gian thực">
+          <div class="telemetry-item good" title="Tốc độ khung hình thực tế">
+            <span>FPS</span><strong id="stat-fps">--</strong>
+          </div>
+          <div class="telemetry-sep"></div>
+          <div class="telemetry-item" title="Độ trễ giải mã WebCodecs">
+            <span>Trễ</span><strong id="stat-latency">--ms</strong>
+          </div>
+          <div class="telemetry-sep"></div>
+          <div class="telemetry-item" title="Độ phân giải luồng">
+            <strong id="stat-res">---</strong>
+          </div>
+          <div class="telemetry-sep"></div>
+          <div class="telemetry-item" title="Băng thông luồng video">
+            <strong id="stat-mbps">-- Mbps</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <select id="preset-select" class="select-box" style="height: 32px; font-size: 12px;" title="Cấu hình tốc độ / chất lượng">
+          <option value="ultra120">Siêu mượt 120 FPS (1080p)</option>
+          <option value="balanced60" selected>Cân bằng 60 FPS (1080p)</option>
+          <option value="lowlat720">Độ trễ cực thấp (720p · 60fps)</option>
+          <option value="sharp1440">Sắc nét 1440p (60fps)</option>
+        </select>
+
+        <button id="btn-audio-toggle" class="btn btn-icon is-active" title="Bật / Tắt âm thanh từ điện thoại">
+          <svg id="icon-audio-on" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+          <svg id="icon-audio-off" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+        </button>
+
+        <button id="btn-toggle-drawer" class="btn btn-icon is-active" title="Ẩn / Hiện bảng điều khiển lệnh">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workbench -->
+    <main class="workbench">
+      <!-- Center Phone Stage -->
+      <section class="stage-area" aria-label="Màn hình điện thoại">
+        <div class="phone-rig">
+          <div id="phone-bezel" class="phone-bezel">
+            <div class="phone-screen-wrap">
+              <canvas id="screen-canvas" width="380" height="820" tabindex="0"></canvas>
+              <textarea id="ime-proxy" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Bộ gõ tiếng Việt vào điện thoại"></textarea>
+
+              <div class="touch-layer">
+                <div id="touch-dot-1" class="touch-dot"></div>
+                <div id="touch-dot-2" class="touch-dot"></div>
+              </div>
+
+              <div id="coord-hud" class="coord-hud">x: 0, y: 0</div>
+              <div id="rec-badge" class="rec-badge">REC MACRO</div>
+
+              <!-- Idle / Onboarding Overlay -->
+              <div id="screen-overlay" class="screen-overlay">
+                <div class="overlay-icon">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                  </svg>
+                </div>
+                <h2 id="overlay-title" class="overlay-title">Sẵn sàng kết nối Samsung S26</h2>
+                <p id="overlay-desc" class="overlay-desc">
+                  Không cần dây USB — kết nối trực tiếp qua Gỡ lỗi không dây (Wi-Fi) trên cùng mạng với Chromebook.
+                </p>
+
+                <div class="setup-steps">
+                  <div class="setup-step">
+                    <span class="setup-step-num">1</span>
+                    <div>Trên Samsung S26: <strong>Cài đặt → Thông tin ĐT → Thông tin phần mềm</strong>, chạm 7 lần vào <strong>Số hiệu bản tạo</strong>.</div>
+                  </div>
+                  <div class="setup-step">
+                    <span class="setup-step-num">2</span>
+                    <div>Vào <strong>Tùy chọn nhà phát triển → Gỡ lỗi không dây</strong> rồi bật lên.</div>
+                  </div>
+                  <div class="setup-step">
+                    <span class="setup-step-num">3</span>
+                    <div>Chọn <strong>Ghép nối bằng mã</strong> và nhập vào nút <strong>Kết nối Wi-Fi</strong> bên dưới.</div>
+                  </div>
+                </div>
+
+                <div class="overlay-actions">
+                  <button id="btn-overlay-wifi" class="btn btn-primary">Ghép nối Samsung S26 qua Wi-Fi</button>
+                  <button id="btn-overlay-demo" class="btn">Chạy thử chế độ Mô phỏng (Test UI)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Floating Vertical Hardware Control Rail -->
+          <aside class="hw-rail" aria-label="Phím phần cứng điện thoại">
+            <button id="hw-power" class="hw-btn" title="Nút Nguồn (Bật / Khóa máy)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+            </button>
+            <button id="hw-oled" class="hw-btn" title="Tắt màn hình vật lý trên ĐT (tiết kiệm pin, vẫn điều khiển trên web)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
+
+            <div class="hw-divider"></div>
+
+            <button id="hw-vol-up" class="hw-btn" title="Tăng âm lượng">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="19" y1="9" x2="19" y2="15"></line><line x1="16" y1="12" x2="22" y2="12"></line></svg>
+            </button>
+            <button id="hw-vol-down" class="hw-btn" title="Giảm âm lượng">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="16" y1="12" x2="22" y2="12"></line></svg>
+            </button>
+
+            <div class="hw-divider"></div>
+
+            <button id="hw-back" class="hw-btn" title="Quay lại (Back / Chuột phải)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <button id="hw-home" class="hw-btn" title="Màn hình chính (Home / Chuột giữa)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"></circle></svg>
+            </button>
+            <button id="hw-recents" class="hw-btn" title="Ứng dụng gần đây (Đa nhiệm)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg>
+            </button>
+
+            <div class="hw-divider"></div>
+
+            <button id="hw-notif" class="hw-btn" title="Kéo thanh thông báo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            </button>
+            <button id="hw-rotate" class="hw-btn" title="Xoay màn hình">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"></path><path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path></svg>
+            </button>
+            <button id="hw-screenshot" class="hw-btn" title="Chụp ảnh màn hình (tải PNG)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            </button>
+            <button id="hw-coord" class="hw-btn" title="Bật/tắt thước đo tọa độ (x, y) để viết lệnh">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>
+            </button>
+            <button id="hw-fullscreen" class="hw-btn" title="Toàn màn hình">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+            </button>
+          </aside>
+        </div>
+
+        <div class="stage-hint">
+          <span><kbd>Click / Kéo</kbd> Chạm &amp; Vuốt</span>
+          <span><kbd>Chuột phải</kbd> Back</span>
+          <span><kbd>Ctrl + Kéo</kbd> Phóng to / Thu nhỏ</span>
+          <span><kbd>Gõ phím</kbd> Nhập trực tiếp (hỗ trợ Tiếng Việt)</span>
+        </div>
+      </section>
+
+      <!-- Right Utility Drawer -->
+      <aside class="drawer" aria-label="Bảng điều khiển và lệnh">
+        <nav class="drawer-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="console" role="tab" aria-selected="true">Lệnh</button>
+          <button class="tab-btn" data-tab="apps" role="tab" aria-selected="false">Ứng dụng</button>
+          <button class="tab-btn" data-tab="clipboard" role="tab" aria-selected="false">Clipboard</button>
+          <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">Cài đặt</button>
+        </nav>
+
+        <div class="drawer-body">
+          <!-- TAB 1: COMMAND CONSOLE & MACRO -->
+          <div id="pane-console" class="tab-pane active">
+            <div class="quick-chips">
+              <button id="btn-record-macro" class="chip" title="Ghi lại các cú chạm/vuốt trên màn hình thành kịch bản lệnh">
+                ● Ghi Macro
+              </button>
+              <button id="btn-toggle-macro-editor" class="chip">Kịch bản Macro</button>
+              <button class="chip" data-quick-cmd="dumpsys battery | grep -E 'level|status|temperature'">Pin &amp; Nhiệt</button>
+              <button class="chip" data-quick-cmd="wm size">Độ phân giải</button>
+              <button class="chip" data-quick-cmd="screen off">Tắt màn ĐT</button>
+              <button class="chip" data-quick-cmd="help">Danh sách lệnh</button>
+            </div>
+
+            <div id="console-output" class="console-output"></div>
+
+            <div id="macro-panel" class="macro-panel">
+              <div class="macro-header">
+                <span>Kịch bản tự động (mỗi dòng 1 lệnh)</span>
+                <button id="btn-clear-macro" class="btn btn-ghost btn-sm">Xóa</button>
+              </div>
+              <textarea id="macro-editor" class="macro-editor" placeholder="Ví dụ:&#10;tap 540 1200&#10;wait 400&#10;text Xin chào S26&#10;key ENTER"></textarea>
+              <div class="macro-actions">
+                <button id="btn-run-macro" class="btn btn-primary btn-sm" style="flex:1;">Chạy Macro</button>
+                <button id="btn-copy-cli" class="btn btn-sm" title="Copy thành script bash dùng phone-ctl trên Crostini">Copy CLI</button>
+              </div>
+            </div>
+
+            <form id="console-form" class="console-input-bar">
+              <span class="console-prompt">$</span>
+              <input id="console-input" class="console-input" type="text" placeholder="tap 540 1200 | key HOME | text hi | dumpsys battery..." autocomplete="off" />
+              <button type="submit" class="btn btn-primary btn-sm">Chạy</button>
+            </form>
+          </div>
+
+          <!-- TAB 2: APPS LAUNCHER -->
+          <div id="pane-apps" class="tab-pane">
+            <div class="pane-toolbar">
+              <input id="apps-search" class="input-field" type="search" placeholder="Tìm ứng dụng trên Samsung S26..." />
+              <button id="btn-reload-apps" class="btn btn-sm">Tải lại</button>
+            </div>
+            <div id="apps-list" class="apps-list">
+              <div class="tip-box">Kết nối thiết bị rồi bấm <strong>Tải lại</strong> để mở nhanh các ứng dụng trên điện thoại.</div>
+            </div>
+          </div>
+
+          <!-- TAB 3: CLIPBOARD & VIETNAMESE COMPOSER -->
+          <div id="pane-clipboard" class="tab-pane">
+            <div class="pane-scroll">
+              <div class="section-card">
+                <h3 class="section-title">
+                  <span>Gửi &amp; Dán chữ sang điện thoại</span>
+                </h3>
+                <p class="section-desc">
+                  Hỗ trợ đầy đủ Tiếng Việt có dấu, emoji và đoạn văn dài. Dán thẳng vào ô nhập đang mở trên Samsung S26.
+                </p>
+                <textarea id="clip-send-input" class="textarea-field" placeholder="Nhập hoặc dán nội dung từ Chromebook..."></textarea>
+                <div class="row-actions">
+                  <button id="btn-clip-paste" class="btn btn-primary" style="flex:1;">Gửi &amp; Dán ngay</button>
+                  <button id="btn-clip-copy" class="btn">Chỉ chép Clipboard</button>
+                </div>
+              </div>
+
+              <div class="section-card">
+                <h3 class="section-title">
+                  <span>Clipboard nhận từ điện thoại</span>
+                  <button id="btn-copy-from-phone" class="btn btn-sm">Chép sang Chromebook</button>
+                </h3>
+                <textarea id="clip-phone-box" class="textarea-field" readonly placeholder="Khi bạn bấm Sao chép (Copy) trên điện thoại, nội dung sẽ tự hiện ở đây..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 4: STREAM SETTINGS & CROSTINI CLI INFO -->
+          <div id="pane-settings" class="tab-pane">
+            <div class="pane-scroll">
+              <div class="section-card">
+                <h3 class="section-title">Tối ưu luồng hình ảnh (scrcpy v5)</h3>
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label class="form-label" for="set-maxsize">Độ phân giải tối đa</label>
+                    <select id="set-maxsize" class="select-box">
+                      <option value="720">720p (Nhanh nhất)</option>
+                      <option value="1080" selected>1080p (Khuyên dùng)</option>
+                      <option value="1440">1440p (Siêu nét)</option>
+                      <option value="0">Gốc (Native S26)</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-label" for="set-fps">FPS tối đa</label>
+                    <select id="set-fps" class="select-box">
+                      <option value="30">30 FPS</option>
+                      <option value="60" selected>60 FPS</option>
+                      <option value="90">90 FPS</option>
+                      <option value="120">120 FPS (S26)</option>
+                    </select>
+                  </div>
+                  <div class="form-field full">
+                    <label class="form-label" for="set-bitrate">
+                      Bitrate video <span id="set-bitrate-val">8 Mbps</span>
+                    </label>
+                    <input id="set-bitrate" type="range" min="2" max="24" step="1" value="8" />
+                  </div>
+                </div>
+
+                <label class="toggle-row">
+                  <span>Truyền âm thanh từ điện thoại (Opus)</span>
+                  <input id="set-audio" type="checkbox" checked />
+                </label>
+                <label class="toggle-row">
+                  <span>Tự tắt màn hình OLED trên ĐT khi kết nối</span>
+                  <input id="set-screenoff" type="checkbox" />
+                </label>
+                <label class="toggle-row">
+                  <span>Giữ máy không ngủ (khi cắm sạc)</span>
+                  <input id="set-stayawake" type="checkbox" />
+                </label>
+                <label class="toggle-row">
+                  <span>Chuột phải = Nút Back</span>
+                  <input id="set-rightback" type="checkbox" checked />
+                </label>
+
+                <button id="btn-apply-settings" class="btn btn-primary">Áp dụng &amp; Tải lại luồng</button>
+              </div>
+
+              <div class="section-card">
+                <h3 class="section-title">Điều khiển từ Terminal Crostini</h3>
+                <p class="section-desc">
+                  Khi web đang mở luồng, mọi lệnh CLI dưới đây chạy thẳng qua kênh scrcpy với độ trễ &lt; 5ms:
+                </p>
+                <div class="tip-box" style="font-family: var(--font-mono); font-size: 11px; user-select: text;">
+                  ./bin/phone-ctl tap 540 1200<br />
+                  ./bin/phone-ctl swipe 540 1800 540 500<br />
+                  ./bin/phone-ctl text "Xin chào Samsung S26"<br />
+                  ./bin/phone-ctl key HOME<br />
+                  ./bin/phone-ctl screen off<br />
+                  ./bin/phone-ctl shell "dumpsys battery"
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Wireless Debugging Modal -->
+  <dialog id="wifi-modal" class="modal">
+    <div class="modal-header">
+      <h2>Kết nối không dây (Samsung Galaxy S26)</h2>
+      <button id="btn-close-wifi" class="btn btn-ghost btn-icon btn-sm" aria-label="Đóng">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-tabs" role="tablist">
+        <button class="modal-tab active" data-mtab="pair">Ghép nối mới</button>
+        <button class="modal-tab" data-mtab="connect">Kết nối nhanh</button>
+        <button class="modal-tab" data-mtab="tcpip">USB → Wi-Fi</button>
+      </div>
+
+      <!-- Pane A: Pair & Connect -->
+      <div id="mpane-pair" class="modal-pane active">
+        <div class="tip-box">
+          Trên <strong>Samsung S26</strong>: vào <strong>Cài đặt → Tùy chọn nhà phát triển → Gỡ lỗi không dây</strong>, bấm vào <strong>Ghép nối thiết bị bằng mã ghép nối</strong> rồi nhập 2 dòng bên dưới:
+        </div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label" for="pair-addr">Địa chỉ IP &amp; Cổng ghép nối</label>
+            <input id="pair-addr" class="input-field" placeholder="192.168.1.25:37123" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="pair-code">Mã ghép nối (6 số)</label>
+            <input id="pair-code" class="input-field" placeholder="482910" maxlength="8" />
+          </div>
+        </div>
+        <button id="btn-do-pair" class="btn btn-primary">1. Ghép nối (adb pair)</button>
+
+        <div class="form-field">
+          <label class="form-label" for="pair-connect-addr">2. Địa chỉ IP &amp; Cổng chính (hiển thị ở màn Gỡ lỗi không dây)</label>
+          <input id="pair-connect-addr" class="input-field" placeholder="192.168.1.25:41289" />
+        </div>
+        <button id="btn-do-pair-connect" class="btn">2. Kết nối ngay (adb connect)</button>
+      </div>
+
+      <!-- Pane B: Quick Connect -->
+      <div id="mpane-connect" class="modal-pane">
+        <div class="tip-box">
+          Nếu Samsung S26 đã ghép nối với Chromebook trước đó, chỉ cần mở <strong>Gỡ lỗi không dây</strong> và nhập <strong>Địa chỉ IP và cổng</strong> đang hiển thị:
+        </div>
+        <div class="form-field">
+          <label class="form-label" for="quick-connect-addr">IP:Port</label>
+          <input id="quick-connect-addr" class="input-field" placeholder="192.168.1.25:41289" />
+        </div>
+        <button id="btn-do-connect" class="btn btn-primary">Kết nối ngay</button>
+      </div>
+
+      <!-- Pane C: USB to Wi-Fi -->
+      <div id="mpane-tcpip" class="modal-pane">
+        <div class="tip-box">
+          Nếu bạn đang cắm cáp USB vào Chromebook (và đã bấm <strong>Kết nối với Linux</strong> trong thông báo ChromeOS), bấm nút dưới để mở cổng Wi-Fi <code>5555</code> rồi rút cáp ra dùng không dây.
+        </div>
+        <button id="btn-do-tcpip" class="btn btn-primary">Chuyển thiết bị USB sang Wi-Fi (cổng 5555)</button>
+      </div>
+
+      <div id="wifi-feedback" class="modal-feedback"></div>
+    </div>
+  </dialog>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "android-web-control",
+  "version": "1.0.0",
+  "description": "Ultra-low-latency Android Web Remote Control (scrcpy v3 + WebCodecs + ADB CLI/API)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

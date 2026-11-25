@@ -1,0 +1,190 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * phone-ctl — Ultra-fast CLI for controlling your Android phone via LinkBridge.
+ * When the Web UI stream is active, touch/swipe/key/text commands inject directly
+ * through the open scrcpy control socket (< 5ms latency!).
+ */
+
+const fs = require('fs');
+
+const API_BASE = process.env.LINKBRIDGE_URL || 'http://127.0.0.1:3000';
+
+function usage() {
+  console.log(`
+phone-ctl — Điều khiển Samsung S26 / Android siêu nhanh từ Terminal Crostini
+
+Cách dùng:
+  phone-ctl [-s <serial>] <lệnh> [tham số...]
+
+Các lệnh:
+  devices                            Liệt kê thiết bị đang kết nối
+  pair <ip:port> <mã-6-số>           Ghép nối Gỡ lỗi không dây (Wi-Fi)
+  connect <ip:port>                  Kết nối thiết bị qua Wi-Fi
+  tap <x> <y>                        Chạm tọa độ (x, y)
+  swipe <x1> <y1> <x2> <y2> [ms]     Vuốt màn hình
+  key <HOME|BACK|ENTER|POWER|...>    Bấm phím cứng / điều hướng
+  text <chuỗi văn bản>               Nhập chữ (hỗ trợ Tiếng Việt)
+  clip <chuỗi> [--paste]             Gửi clipboard (và tùy chọn dán ngay)
+  screen <on|off>                    Bật / Tắt màn hình OLED trên điện thoại
+  app <package>                      Mở ứng dụng (vd: com.android.chrome)
+  apps                               Liệt kê ứng dụng trên máy
+  screenshot [file.png]              Chụp ảnh màn hình gốc lưu ra file PNG
+  shell <lệnh adb shell>             Chạy lệnh shell bất kỳ trên điện thoại
+`);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('image/png')) {
+    return { ok: res.ok, buffer: Buffer.from(await res.arrayBuffer()) };
+  }
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok && data.ok !== false, data, status: res.status };
+}
+
+async function resolveSerial(explicit) {
+  if (explicit) return explicit;
+  const { ok, data } = await api('GET', '/api/devices');
+  if (!ok) throw new Error('Không kết nối được tới LinkBridge server. Hãy chạy ./start.sh trước.');
+  const online = (data.devices || []).filter((d) => d.state === 'device');
+  if (online.length === 0) throw new Error('Chưa có thiết bị Android nào đang kết nối.');
+  // Prefer the currently streaming device
+  const streaming = online.find((d) => d.streaming);
+  return (streaming || online[0]).serial;
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  let serial = process.env.ANDROID_SERIAL || '';
+
+  if (args[0] === '-s' && args[1]) {
+    serial = args[1];
+    args.splice(0, 2);
+  }
+
+  const cmd = (args[0] || '').toLowerCase();
+  const rest = args.slice(1);
+
+  if (!cmd || cmd === '-h' || cmd === '--help' || cmd === 'help') {
+    usage();
+    process.exit(0);
+  }
+
+  if (cmd === 'devices') {
+    const { data } = await api('GET', '/api/devices');
+    for (const d of data.devices || []) {
+      const tag = d.streaming ? '[LIVE]' : `[${d.state}]`;
+      console.log(`${d.serial}\t${tag}\t${d.displayName || d.model || ''}\t(${d.transport})`);
+    }
+    return;
+  }
+
+  if (cmd === 'pair') {
+    const { ok, data } = await api('POST', '/api/adb/pair', { address: rest[0], code: rest[1] });
+    console.log(data.message || (ok ? 'OK' : 'Thất bại'));
+    process.exit(ok ? 0 : 1);
+  }
+
+  if (cmd === 'connect') {
+    const { ok, data } = await api('POST', '/api/adb/connect', { address: rest[0] });
+    console.log(data.message || (ok ? 'OK' : 'Thất bại'));
+    process.exit(ok ? 0 : 1);
+  }
+
+  const target = await resolveSerial(serial);
+  const enc = encodeURIComponent(target);
+
+  switch (cmd) {
+    case 'tap': {
+      const { ok, data } = await api('POST', `/api/device/${enc}/tap`, {
+        x: Number(rest[0]),
+        y: Number(rest[1]),
+      });
+      console.log(ok ? `OK (${data.via} · ${data.durationMs}ms)` : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'swipe': {
+      const { ok, data } = await api('POST', `/api/device/${enc}/swipe`, {
+        x1: Number(rest[0]),
+        y1: Number(rest[1]),
+        x2: Number(rest[2]),
+        y2: Number(rest[3]),
+        durationMs: Number(rest[4]) || 260,
+      });
+      console.log(ok ? `OK (${data.via} · ${data.durationMs}ms)` : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'key': {
+      const { ok, data } = await api('POST', `/api/device/${enc}/key`, { keycode: rest[0] });
+      console.log(ok ? `OK key=${data.keycode} (${data.via} · ${data.durationMs}ms)` : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'text': {
+      const { ok, data } = await api('POST', `/api/device/${enc}/text`, { text: rest.join(' ') });
+      console.log(ok ? `OK (${data.via} · ${data.durationMs}ms)` : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'clip': {
+      const paste = rest.includes('--paste');
+      const text = rest.filter((x) => x !== '--paste').join(' ');
+      const { ok, data } = await api('POST', `/api/device/${enc}/clipboard`, { text, paste });
+      console.log(ok ? 'OK' : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'screen': {
+      const on = (rest[0] || '').toLowerCase() === 'on';
+      const { ok, data } = await api('POST', `/api/device/${enc}/display-power`, { on });
+      console.log(ok ? `Màn hình ĐT: ${on ? 'BẬT' : 'TẮT'}` : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'app': {
+      const { ok, data } = await api('POST', `/api/device/${enc}/app`, { package: rest[0] });
+      console.log(ok ? `Đã mở ${rest[0]} (${data.via})` : data.error || 'Lỗi');
+      process.exit(ok ? 0 : 1);
+    }
+    case 'apps': {
+      const { data } = await api('GET', `/api/device/${enc}/apps`);
+      for (const a of data.apps || []) {
+        console.log(`${a.package}\t${a.label}`);
+      }
+      return;
+    }
+    case 'screenshot': {
+      const outPath = rest[0] || `screenshot-${Date.now()}.png`;
+      const { ok, buffer, data } = await api('GET', `/api/device/${enc}/screenshot`);
+      if (!ok || !buffer) {
+        console.error(data?.error || 'Không chụp được màn hình');
+        process.exit(1);
+      }
+      fs.writeFileSync(outPath, buffer);
+      console.log(`Đã lưu ảnh chụp màn hình: ${outPath} (${buffer.length} bytes)`);
+      return;
+    }
+    case 'shell': {
+      const { ok, data } = await api('POST', `/api/device/${enc}/shell`, { command: rest.join(' ') });
+      if (data.stdout) process.stdout.write(data.stdout);
+      if (data.stderr) process.stderr.write(data.stderr);
+      process.exit(ok ? 0 : 1);
+    }
+    default: {
+      // Allow direct fallback to shell if unknown command
+      const { ok, data } = await api('POST', `/api/device/${enc}/shell`, { command: args.join(' ') });
+      if (data.stdout) process.stdout.write(data.stdout);
+      if (data.stderr) process.stderr.write(data.stderr);
+      process.exit(ok ? 0 : 1);
+    }
+  }
+}
+
+main().catch((err) => {
+  console.error(`[phone-ctl] Lỗi: ${err.message}`);
+  process.exit(1);
+});
