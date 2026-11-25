@@ -243,7 +243,7 @@ class ScrcpySession extends EventEmitter {
         `max_size=${this.options.maxSize}`,
         `video_bit_rate=${this.options.bitRate}`,
         `max_fps=${this.options.maxFps}`,
-        'video_codec_options=i-frame-interval=2',
+        'video_codec_options=i-frame-interval=5',
         `stay_awake=${this.options.stayAwake ? 'true' : 'false'}`,
         'power_on=true',
         'clipboard_autosync=true',
@@ -493,8 +493,8 @@ class ScrcpySession extends EventEmitter {
   broadcastBinary(buf, critical = false) {
     for (const ws of this.clients) {
       if (ws.readyState !== 1) continue;
-      // Drop non-critical delta frames if a client falls behind (> 512KB queued) to keep latency minimal
-      if (!critical && ws.bufferedAmount > 512 * 1024) continue;
+      // Only drop non-critical frames on severe stall (> 2MB queued) to avoid breaking H.264 GOP
+      if (!critical && ws.bufferedAmount > 2 * 1024 * 1024) continue;
       ws.send(buf);
     }
   }

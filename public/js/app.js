@@ -136,6 +136,7 @@ const dom = {
 };
 
 const PRESETS = {
+  wifi720: { maxSize: 720, maxFps: 60, bitRate: 3_000_000 },
   ultra120: { maxSize: 1080, maxFps: 120, bitRate: 12_000_000 },
   balanced60: { maxSize: 1080, maxFps: 60, bitRate: 8_000_000 },
   lowlat720: { maxSize: 720, maxFps: 60, bitRate: 5_000_000 },

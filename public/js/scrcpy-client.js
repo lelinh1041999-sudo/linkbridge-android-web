@@ -376,7 +376,12 @@ export class ScrcpyWebClient {
 
     if (!this.videoDecoder || this.videoDecoder.state !== 'configured') return;
     if (this.awaitingKeyFrame && !isKeyFrame) return;
-    if (!isKeyFrame && this.videoDecoder.decodeQueueSize > 3) return;
+    // Never drop a single P-frame mid-GOP without resetting to a keyframe (dropping a delta frame freezes H.264!)
+    if (!isKeyFrame && this.videoDecoder.decodeQueueSize > 12) {
+      this.awaitingKeyFrame = true;
+      this.sendJson({ type: 'reset_video' });
+      return;
+    }
 
     let chunkData = payload;
     if (isKeyFrame && this.lastConfigBytes) {
