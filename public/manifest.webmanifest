@@ -1,6 +1,6 @@
 {
-  "name": "LinkBridge — Điều khiển Android siêu mượt",
-  "short_name": "LinkBridge",
+  "name": "LinhBridge — Điều khiển Android siêu mượt",
+  "short_name": "LinhBridge",
   "description": "Điều khiển màn hình Samsung Galaxy S26 & Android siêu mượt qua WebUSB hoặc Wi-Fi với WebCodecs + Console lệnh.",
   "start_url": "./",
   "scope": "./",

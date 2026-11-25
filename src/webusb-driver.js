@@ -305,7 +305,7 @@ async function fetchScrcpyServerBinary() {
 export class WebUsbScrcpyDriver {
   constructor(callbacks = {}) {
     this.cb = callbacks;
-    this.credentialStore = new AdbWebCredentialStore('LinkBridge');
+    this.credentialStore = new AdbWebCredentialStore('LinhBridge');
     this.usbDevice = null;
     this.adb = null;
     this.serverProcess = null;

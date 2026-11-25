@@ -1,4 +1,4 @@
-# LinkBridge — Điều khiển Samsung Galaxy S26 siêu mượt qua Web (PWA · WebUSB · Wi-Fi)
+# LinhBridge — Điều khiển Samsung Galaxy S26 siêu mượt qua Web (PWA · WebUSB · Wi-Fi)
 
 Mở trực tiếp trên Chrome (không cần cài gì):
 **👉 https://lelinh1041999-sudo.github.io/linkbridge-android-web/**
@@ -27,7 +27,7 @@ cd linkbridge-android-web
 
 Sau khi chạy xong:
 - Bridge Wi-Fi sẽ **tự chạy ngầm** mỗi khi Linux Crostini bật (không cần mở Terminal nữa).
-- Biểu tượng **LinkBridge** xuất hiện ngay trong **App Launcher (Linux apps)** của Chromebook.
+- Biểu tượng **LinhBridge** xuất hiện ngay trong **App Launcher (Linux apps)** của Chromebook.
 - Bạn có thể mở bằng icon App (`http://localhost:3000`) **HOẶC** mở ngay trang web **https://lelinh1041999-sudo.github.io/linkbridge-android-web/** — cả hai đều tự nhận Bridge Wi-Fi để điều khiển Samsung S26 không dây!
 
 ### Ghép nối Samsung S26 không dây (chỉ cần làm lần đầu)

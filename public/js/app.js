@@ -188,7 +188,7 @@ dom.btnInstallPwa.addEventListener('click', async () => {
   state.deferredInstallPrompt.prompt();
   const choice = await state.deferredInstallPrompt.userChoice;
   if (choice.outcome === 'accepted') {
-    toast('Đã cài LinkBridge thành ứng dụng riêng!', 'ok');
+    toast('Đã cài LinhBridge thành ứng dụng riêng!', 'ok');
     dom.btnInstallPwa.style.display = 'none';
   }
   state.deferredInstallPrompt = null;
@@ -877,7 +877,7 @@ dom.hwRotate.addEventListener('click', () => {
 dom.hwScreenshot.addEventListener('click', async () => {
   if (state.demoMode) {
     const a = document.createElement('a');
-    a.download = `linkbridge-demo-${Date.now()}.png`;
+    a.download = `linhbridge-demo-${Date.now()}.png`;
     a.href = dom.canvas.toDataURL('image/png');
     a.click();
     return toast('Đã lưu ảnh màn hình (PNG)', 'ok');
@@ -1655,7 +1655,7 @@ const demo = {
       ctx.fill();
       ctx.fillStyle = '#f8fafc';
       ctx.font = '600 18px Inter, sans-serif';
-      ctx.fillText('Thông báo · LinkBridge sẵn sàng', 38, 108);
+      ctx.fillText('Thông báo · LinhBridge sẵn sàng', 38, 108);
       ctx.fillStyle = '#94a3b8';
       ctx.font = '400 15px Inter, sans-serif';
       ctx.fillText('Hỗ trợ cả WebUSB trực tiếp & Wi-Fi Bridge', 38, 142);
@@ -1695,7 +1695,7 @@ dom.btnOverlayDemo.addEventListener('click', () => demo.start());
 // Boot
 // ==========================================================================
 
-appendLog('sys', 'LinkBridge v2 sẵn sàng (WebUSB trực tiếp + Wi-Fi Bridge + scrcpy v5.0.1). Gõ "help" để xem lệnh.');
+appendLog('sys', 'LinhBridge v2 sẵn sàng (WebUSB trực tiếp + Wi-Fi Bridge + scrcpy v5.0.1). Gõ "help" để xem lệnh.');
 if (!ScrcpyWebClient.isWebCodecsSupported()) {
   appendLog('err', 'Cảnh báo: Trình duyệt không hỗ trợ WebCodecs VideoDecoder. Hãy mở bằng Chrome.');
 }

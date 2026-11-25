@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "============================================================"
-echo "  LinkBridge — Cài đặt cho Chromebook Linux (Crostini)"
+echo "  LinhBridge — Cài đặt cho Chromebook Linux (Crostini)"
 echo "============================================================"
 
 # 1. Cài ADB nếu chưa có

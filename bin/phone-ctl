@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * phone-ctl — Ultra-fast CLI for controlling your Android phone via LinkBridge.
+ * phone-ctl — Ultra-fast CLI for controlling your Android phone via LinhBridge.
  * When the Web UI stream is active, touch/swipe/key/text commands inject directly
  * through the open scrcpy control socket (< 5ms latency!).
  */
@@ -53,7 +53,7 @@ async function api(method, path, body) {
 async function resolveSerial(explicit) {
   if (explicit) return explicit;
   const { ok, data } = await api('GET', '/api/devices');
-  if (!ok) throw new Error('Không kết nối được tới LinkBridge server. Hãy chạy ./start.sh trước.');
+  if (!ok) throw new Error('Không kết nối được tới LinhBridge server. Hãy chạy ./start.sh trước.');
   const online = (data.devices || []).filter((d) => d.state === 'device');
   if (online.length === 0) throw new Error('Chưa có thiết bị Android nào đang kết nối.');
   // Prefer the currently streaming device

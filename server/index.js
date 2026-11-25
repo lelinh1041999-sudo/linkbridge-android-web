@@ -452,7 +452,7 @@ wss.on('connection', async (ws, _req, url) => {
 
 // Graceful shutdown
 async function shutdown() {
-  console.log('\n[LinkBridge] Đang đóng các phiên kết nối...');
+  console.log('\n[LinhBridge] Đang đóng các phiên kết nối...');
   await sessions.stopAll();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
@@ -462,7 +462,7 @@ process.on('SIGTERM', shutdown);
 
 server.listen(PORT, HOST, () => {
   console.log(`\n┌──────────────────────────────────────────────────────────────┐`);
-  console.log(`│  LinkBridge — Android Ultra-Low-Latency Web Remote Control   │`);
+  console.log(`│  LinhBridge — Android Ultra-Low-Latency Web Remote Control   │`);
   console.log(`│  scrcpy-server v${SCRCPY_VERSION} • WebCodecs Hardware Decode             │`);
   console.log(`├──────────────────────────────────────────────────────────────┤`);
   console.log(`│  Mở trên Chrome (Chromebook):  http://localhost:${PORT}         │`);

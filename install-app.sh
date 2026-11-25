@@ -5,7 +5,7 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${APP_DIR}"
 
 echo "============================================================"
-echo "  LinkBridge — Cài thành App & Dịch vụ nền trên Chromebook"
+echo "  LinhBridge — Cài thành App & Dịch vụ nền trên Chromebook"
 echo "============================================================"
 
 # 1. Chạy cài đặt cơ bản (ADB, Node.js, npm packages)
@@ -16,9 +16,9 @@ NODE_BIN="$(command -v node)"
 
 # 2. Cài systemd user service để Wi-Fi Bridge tự chạy ngầm khi bật Linux Crostini
 mkdir -p "${HOME}/.config/systemd/user"
-cat > "${HOME}/.config/systemd/user/linkbridge.service" <<EOF
+cat > "${HOME}/.config/systemd/user/linhbridge.service" <<EOF
 [Unit]
-Description=LinkBridge Android Ultra-Low-Latency Web Remote Bridge
+Description=LinhBridge Android Ultra-Low-Latency Web Remote Bridge
 After=network-online.target
 
 [Service]
@@ -34,26 +34,26 @@ WantedBy=default.target
 EOF
 
 if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload >/dev/null 2>&1; then
-  systemctl --user enable --now linkbridge.service
-  echo "[✓] Đã bật dịch vụ chạy ngầm linkbridge.service (tự chạy cùng Crostini)."
+  systemctl --user enable --now linhbridge.service
+  echo "[✓] Đã bật dịch vụ chạy ngầm linhbridge.service (tự chạy cùng Crostini)."
 else
-  nohup "${NODE_BIN}" "${APP_DIR}/server/index.js" >/tmp/linkbridge.log 2>&1 &
-  echo "[✓] Đã khởi chạy LinkBridge chạy nền."
+  nohup "${NODE_BIN}" "${APP_DIR}/server/index.js" >/tmp/linhbridge.log 2>&1 &
+  echo "[✓] Đã khởi chạy LinhBridge chạy nền."
 fi
 
 # 3. Cài icon & Desktop Entry -> tự hiện trong App Launcher của Chromebook!
 mkdir -p "${HOME}/.local/share/icons/hicolor/512x512/apps"
 mkdir -p "${HOME}/.local/share/applications"
-cp "${APP_DIR}/public/icons/icon-512.png" "${HOME}/.local/share/icons/hicolor/512x512/apps/linkbridge.png"
+cp "${APP_DIR}/public/icons/icon-512.png" "${HOME}/.local/share/icons/hicolor/512x512/apps/linhbridge.png"
 
-cat > "${HOME}/.local/share/applications/linkbridge.desktop" <<EOF
+cat > "${HOME}/.local/share/applications/linhbridge.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=LinkBridge
+Name=LinhBridge
 GenericName=Android Remote Control
 Comment=Điều khiển Samsung S26 & Android siêu mượt qua Web (Wi-Fi & USB)
 Exec=${APP_DIR}/bin/launch-app.sh
-Icon=linkbridge
+Icon=linhbridge
 Terminal=false
 Categories=Utility;Network;
 StartupNotify=true
@@ -71,10 +71,10 @@ echo ""
 echo "============================================================"
 echo "  CÀI ĐẶT THÀNH CÔNG!"
 echo "============================================================"
-echo "  1. Mở App Launcher (nút Tìm kiếm trên Chromebook) -> Linux apps -> bấm icon LinkBridge!"
+echo "  1. Mở App Launcher (nút Tìm kiếm trên Chromebook) -> Linux apps -> bấm icon LinhBridge!"
 echo "  2. Hoặc mở trực tiếp trên Chrome:"
 echo "     • Nội bộ:       http://localhost:3000"
 echo "     • Bản Web PWA:  https://lelinh1041999-sudo.github.io/linkbridge-android-web/"
-echo "  3. Bấm nút 'Cài App' trên thanh công cụ web để ghim LinkBridge thành cửa sổ riêng như Phone Link!"
+echo "  3. Bấm nút 'Cài App' trên thanh công cụ web để ghim LinhBridge thành cửa sổ riêng như Phone Link!"
 echo "  4. Lệnh CLI nhanh: ${HOME}/.local/bin/phone-ctl help"
 echo ""

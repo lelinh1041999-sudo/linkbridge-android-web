@@ -1,4 +1,4 @@
-name: Deploy LinkBridge Web App to GitHub Pages
+name: Deploy LinhBridge Web App to GitHub Pages
 
 on:
   push:

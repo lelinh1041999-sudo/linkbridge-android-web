@@ -6,13 +6,13 @@ URL="http://localhost:${PORT:-3000}"
 
 # 1. Đảm bảo Bridge Server đang chạy ngầm
 if ! curl -sf "${URL}/api/health" >/dev/null 2>&1; then
-  if command -v systemctl >/dev/null 2>&1 && systemctl --user list-unit-files linkbridge.service >/dev/null 2>&1; then
-    systemctl --user start linkbridge.service || true
+  if command -v systemctl >/dev/null 2>&1 && systemctl --user list-unit-files linhbridge.service >/dev/null 2>&1; then
+    systemctl --user start linhbridge.service || true
   fi
 fi
 
 if ! curl -sf "${URL}/api/health" >/dev/null 2>&1; then
-  nohup node "${APP_DIR}/server/index.js" >/tmp/linkbridge.log 2>&1 &
+  nohup node "${APP_DIR}/server/index.js" >/tmp/linhbridge.log 2>&1 &
   for _ in $(seq 1 25); do
     if curl -sf "${URL}/api/health" >/dev/null 2>&1; then
       break
@@ -27,5 +27,5 @@ if command -v garcon-url-handler >/dev/null 2>&1; then
 elif command -v xdg-open >/dev/null 2>&1; then
   exec xdg-open "${URL}"
 else
-  echo "LinkBridge đang chạy tại: ${URL}"
+  echo "LinhBridge đang chạy tại: ${URL}"
 fi
