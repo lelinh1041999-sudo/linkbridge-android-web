@@ -1734,12 +1734,20 @@ const aiBridge = {
   updateButtonUi() {
     const btn = $('btn-ai-bridge');
     const lbl = $('ai-bridge-btn-label');
+    const chip = $('btn-ai-bridge-chip');
     const toggle = $('btn-ai-toggle');
-    btn.classList.toggle('is-active', this.connected);
-    lbl.textContent = this.connected ? `AI: ${this.roomId}` : 'AI Bridge';
-    toggle.textContent = this.connected ? 'Ngắt AI Bridge' : 'Bật AI Bridge';
-    toggle.classList.toggle('btn-danger', this.connected);
-    toggle.classList.toggle('btn-primary', !this.connected);
+    btn?.classList.toggle('is-active', this.connected);
+    if (lbl) lbl.textContent = this.connected ? `AI: ${this.roomId}` : 'AI Bridge';
+    if (chip) {
+      chip.textContent = this.connected ? `● AI: ${this.roomId}` : 'AI Bridge';
+      chip.style.borderColor = this.connected ? 'rgba(16,185,129,0.6)' : 'rgba(56,189,248,0.45)';
+      chip.style.color = this.connected ? '#10b981' : 'var(--accent)';
+    }
+    if (toggle) {
+      toggle.textContent = this.connected ? 'Ngắt AI Bridge' : 'Bật AI Bridge';
+      toggle.classList.toggle('btn-danger', this.connected);
+      toggle.classList.toggle('btn-primary', !this.connected);
+    }
   },
 
   connect() {
