@@ -2087,9 +2087,88 @@ const aiBridge = {
     throw new Error('Chưa kết nối điện thoại trên LinhBridge.');
   },
 
+  cbStream: null,
+  cbVideo: null,
+
+  async toggleChromebookShare() {
+    if (this.cbStream) {
+      this.stopChromebookShare();
+      return;
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      this.setFeedback(false, 'Trình duyệt không hỗ trợ chia sẻ màn hình (getDisplayMedia).');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 5, max: 10 }, width: { max: 1920 } },
+        audio: false,
+      });
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.muted = true;
+      await video.play();
+      this.cbStream = stream;
+      this.cbVideo = video;
+
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        this.stopChromebookShare();
+      });
+
+      const btn = $('btn-cb-share');
+      if (btn) {
+        btn.textContent = '● Đang chia sẻ màn Chromebook (Bấm để dừng)';
+        btn.classList.add('btn-danger');
+      }
+      toast('Đã bật chia sẻ màn hình Chromebook cho AI xem!', 'ok');
+      this.setFeedback(true, 'AI có thể chụp xem màn hình Chromebook khi bạn yêu cầu.');
+    } catch (err) {
+      this.setFeedback(false, `Đã hủy chia sẻ màn hình: ${err.message}`);
+    }
+  },
+
+  stopChromebookShare() {
+    if (this.cbStream) {
+      for (const t of this.cbStream.getTracks()) {
+        try { t.stop(); } catch {}
+      }
+      this.cbStream = null;
+    }
+    if (this.cbVideo) {
+      this.cbVideo.srcObject = null;
+      this.cbVideo = null;
+    }
+    const btn = $('btn-cb-share');
+    if (btn) {
+      btn.textContent = 'Chia sẻ màn hình Chromebook cho AI xem';
+      btn.classList.remove('btn-danger');
+    }
+  },
+
   async handleCommand(msg) {
     const action = String(msg.action || '').toLowerCase();
     try {
+      if (action === 'chromebook_screen') {
+        if (!this.cbVideo || !this.cbStream || this.cbVideo.videoWidth === 0) {
+          return {
+            ok: false,
+            error: 'Chưa bật chia sẻ màn hình Chromebook. Hãy bấm "Chia sẻ màn hình Chromebook" trong AI Bridge.',
+          };
+        }
+        const q = Number(msg.quality) || 0.82;
+        const off = document.createElement('canvas');
+        off.width = this.cbVideo.videoWidth;
+        off.height = this.cbVideo.videoHeight;
+        off.getContext('2d').drawImage(this.cbVideo, 0, 0, off.width, off.height);
+        const dataUrl = off.toDataURL('image/jpeg', q);
+        return {
+          ok: true,
+          width: off.width,
+          height: off.height,
+          imageBase64: dataUrl.split(',')[1] || '',
+        };
+      }
+
       if (action === 'screenshot') {
         const q = Number(msg.quality) || 0.85;
         const dataUrl = dom.canvas.toDataURL('image/jpeg', q);
@@ -2185,6 +2264,7 @@ $('btn-ai-toggle').addEventListener('click', () => {
   if (aiBridge.connected) aiBridge.disconnect();
   else aiBridge.connect();
 });
+$('btn-cb-share')?.addEventListener('click', () => aiBridge.toggleChromebookShare());
 $('btn-ai-regen').addEventListener('click', () => aiBridge.regenerate());
 $('btn-ai-copy').addEventListener('click', async () => {
   const relayUrl = $('ai-relay-url').value.trim() || '(chưa nhập URL Relay)';

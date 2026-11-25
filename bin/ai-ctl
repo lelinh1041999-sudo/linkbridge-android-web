@@ -3,24 +3,26 @@
 
 /**
  * ai-ctl — Remote AI control CLI for LinhBridge Cloud Relay.
- * Allows this cloud environment (or any AI script) to see the phone screen,
- * inspect clickable UI elements, and tap/swipe/type/run shell commands.
+ * Works with BOTH:
+ *   1. LinhBridge Browser AI Bridge (Samsung S26 screen/control + Chromebook Screen Share)
+ *   2. LinhBridge Crostini Agent (Chromebook Linux terminal, files, open URL in ChromeOS)
  */
 
 const fs = require('fs');
 
 function usage() {
   console.log(`
-ai-ctl — Điều khiển Samsung S26 từ xa qua LinhBridge AI Bridge
+ai-ctl — Điều khiển Samsung S26 & Chromebook từ xa qua LinhBridge Cloud Relay
 
-Biến môi trường (hoặc truyền qua cờ):
-  LB_RELAY_URL   URL Relay (vd: https://linhbridge-relay.xxx.workers.dev)
-  LB_ROOM        Mã phòng (vd: LB-8492)
+Biến môi trường (hoặc cờ --relay / --room / --token):
+  LB_RELAY_URL   URL Relay (vd: https://linhbridge-relay.onrender.com)
+  LB_ROOM        Mã phòng (LB-xxxx cho Web/S26 hoặc CB-xxxx cho Crostini Agent)
   LB_TOKEN       Token phòng
 
-Các lệnh:
+Lệnh dùng cho Web AI Bridge (Samsung S26 + Xem màn hình Chromebook):
   ai-ctl status
-  ai-ctl screenshot [out.jpg]        Chụp ảnh màn hình hiện tại (< 50ms)
+  ai-ctl screenshot [out.jpg]        Chụp màn hình Samsung S26 (< 50ms)
+  ai-ctl cb-screen [out.jpg]         Chụp màn hình Chromebook (khi bật Chia sẻ màn hình)
   ai-ctl ui                          Lấy danh sách nút/text có thể bấm + tọa độ (x, y)
   ai-ctl tap <x> <y>
   ai-ctl swipe <x1> <y1> <x2> <y2> [ms]
@@ -29,6 +31,14 @@ Các lệnh:
   ai-ctl app <package>
   ai-ctl screen <on|off>
   ai-ctl shell <lệnh adb shell>
+
+Lệnh dùng cho Crostini Agent (Linux Chromebook):
+  ai-ctl info                        Xem cấu hình, RAM, ổ đĩa, ADB trên Chromebook
+  ai-ctl exec "<lệnh bash>"          Chạy lệnh Linux trên Chromebook Crostini
+  ai-ctl ls [đường dẫn]              Xem danh sách thư mục trên Chromebook
+  ai-ctl cat <đường dẫn file>        Đọc nội dung file trên Chromebook
+  ai-ctl write <file> <nội dung>     Ghi file trên Chromebook
+  ai-ctl open <https://...>          Mở link trực tiếp trong Chrome trên Chromebook
 `);
 }
 
@@ -74,6 +84,9 @@ async function main() {
     case 'screenshot':
       body = { action: 'screenshot', format: 'jpeg', quality: 0.85 };
       break;
+    case 'cb-screen':
+      body = { action: 'chromebook_screen', quality: 0.82 };
+      break;
     case 'ui':
       body = { action: 'ui' };
       break;
@@ -102,6 +115,24 @@ async function main() {
     case 'screen':
       body = { action: 'screen', on: (rest[0] || '').toLowerCase() === 'on' };
       break;
+    case 'info':
+      body = { action: 'info' };
+      break;
+    case 'exec':
+      body = { action: 'exec', command: rest.join(' ') };
+      break;
+    case 'ls':
+      body = { action: 'list_dir', path: rest[0] || '' };
+      break;
+    case 'cat':
+      body = { action: 'read_file', path: rest[0] || '' };
+      break;
+    case 'write':
+      body = { action: 'write_file', path: rest[0] || '', content: rest.slice(1).join(' ') };
+      break;
+    case 'open':
+      body = { action: 'open_url', url: rest[0] || '' };
+      break;
     case 'shell':
       body = { action: 'shell', command: rest.join(' ') };
       break;
@@ -125,8 +156,9 @@ async function main() {
     process.exit(1);
   }
 
-  if (cmd === 'screenshot' && data.imageBase64) {
-    const outPath = rest[0] || `/tmp/linhbridge-${Date.now()}.jpg`;
+  if ((cmd === 'screenshot' || cmd === 'cb-screen') && data.imageBase64) {
+    const prefix = cmd === 'cb-screen' ? 'chromebook' : 's26';
+    const outPath = rest[0] || `/tmp/${prefix}-${Date.now()}.jpg`;
     fs.writeFileSync(outPath, Buffer.from(data.imageBase64, 'base64'));
     console.log(`Saved ${outPath} (${data.width}x${data.height})`);
     return;
@@ -140,13 +172,25 @@ async function main() {
     return;
   }
 
+  if (cmd === 'cat' && data.content !== undefined) {
+    process.stdout.write(data.content);
+    return;
+  }
+
+  if (cmd === 'ls' && Array.isArray(data.entries)) {
+    for (const e of data.entries) {
+      console.log(`${e.type === 'dir' ? '[DIR] ' : '      '}${e.name}`);
+    }
+    return;
+  }
+
   if (data.stdout !== undefined) {
     if (data.stdout) process.stdout.write(data.stdout);
     if (data.stderr) process.stderr.write(data.stderr);
     return;
   }
 
-  console.log(JSON.stringify(data));
+  console.log(JSON.stringify(data, null, 2));
 }
 
 main().catch((err) => {
