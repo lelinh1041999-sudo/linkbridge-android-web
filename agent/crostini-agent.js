@@ -36,16 +36,32 @@ async function runBash(command, cwd, timeoutMs = 20000) {
     const child = spawn('bash', ['-lc', command], {
       cwd: cwd ? resolveUserPath(cwd) : os.homedir(),
       env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
     let stderr = '';
     const MAX_OUT = 256 * 1024;
     let killed = false;
+    let settled = false;
+
+    const done = (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        ok: !killed && code === 0,
+        stdout,
+        stderr: killed ? `${stderr}\n[Timeout sau ${timeoutMs}ms]`.trim() : stderr,
+        exitCode: killed ? 124 : (code ?? 0),
+        durationMs: Date.now() - startedAt,
+      });
+    };
 
     const timer = setTimeout(() => {
       killed = true;
       try { child.kill('SIGKILL'); } catch {}
+      setTimeout(() => done(124), 150);
     }, Math.min(24000, Math.max(1000, Number(timeoutMs) || 20000)));
 
     child.stdout.on('data', (d) => {
@@ -56,20 +72,15 @@ async function runBash(command, cwd, timeoutMs = 20000) {
     });
 
     child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ ok: false, stdout, stderr: err.message, exitCode: 1, durationMs: Date.now() - startedAt });
+      stderr += err.message;
+      done(1);
     });
 
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({
-        ok: !killed && code === 0,
-        stdout,
-        stderr: killed ? `${stderr}\n[Timeout sau ${timeoutMs}ms]`.trim() : stderr,
-        exitCode: killed ? 124 : (code ?? 0),
-        durationMs: Date.now() - startedAt,
-      });
+    child.on('exit', (code) => {
+      setTimeout(() => done(code ?? 0), 150);
     });
+
+    child.on('close', (code) => done(code ?? 0));
   });
 }
 
@@ -176,22 +187,32 @@ function connect() {
     console.log('│  Nhấn Ctrl + C bất cứ lúc nào để ngắt quyền truy cập ngay.   │');
     console.log('└──────────────────────────────────────────────────────────────┘\n');
 
+    let awaitingPong = false;
     pingTimer = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (awaitingPong) {
+        console.log('[Crostini Agent] Kết nối bị treo, tự động kết nối lại...');
+        try { ws.terminate(); } catch {}
+        return;
       }
-    }, 20000);
-  });
+      awaitingPong = true;
+      ws.send(JSON.stringify({ type: 'ping' }));
+    }, 12000);
 
-  ws.on('message', async (raw) => {
-    try {
-      const msg = JSON.parse(raw.toString('utf8'));
-      if (msg.type === 'pong' || msg.type === 'relay_ready' || !msg.id) return;
-      const reply = await handleAction(msg);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ id: msg.id, ...reply }));
-      }
-    } catch {}
+    ws.on('message', async (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString('utf8'));
+        if (msg.type === 'pong') {
+          awaitingPong = false;
+          return;
+        }
+        if (msg.type === 'relay_ready' || !msg.id) return;
+        const reply = await handleAction(msg);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ id: msg.id, ...reply }));
+        }
+      } catch {}
+    });
   });
 
   ws.on('close', () => {

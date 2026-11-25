@@ -142,12 +142,27 @@ wss.on('connection', (ws, roomId, token) => {
     }
   }
 
-  const room = { hostWs: ws, token, pending: new Map() };
+  const room = { hostWs: ws, token, pending: new Map(), lastSeen: Date.now() };
   rooms.set(roomId, room);
+
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; room.lastSeen = Date.now(); });
+
+  const hb = setInterval(() => {
+    if (!ws.isAlive) {
+      clearInterval(hb);
+      try { ws.terminate(); } catch {}
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  }, 15000);
 
   ws.send(JSON.stringify({ type: 'relay_ready', roomId }));
 
   ws.on('message', (data) => {
+    ws.isAlive = true;
+    room.lastSeen = Date.now();
     try {
       const msg = JSON.parse(data.toString('utf8'));
       if (msg.type === 'ping') {
@@ -164,10 +179,11 @@ wss.on('connection', (ws, roomId, token) => {
   });
 
   ws.on('close', () => {
+    clearInterval(hb);
     if (rooms.get(roomId) === room) {
       for (const [, p] of room.pending) {
         clearTimeout(p.timer);
-        sendJson(p.res, 503, { ok: false, error: 'Trình duyệt LinhBridge đã ngắt AI Bridge.' });
+        sendJson(p.res, 503, { ok: false, error: 'Host đã ngắt kết nối.' });
       }
       rooms.delete(roomId);
     }
