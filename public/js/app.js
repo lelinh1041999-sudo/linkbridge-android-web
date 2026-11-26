@@ -2226,7 +2226,21 @@ if (dom.btnWifiAuto) dom.btnWifiAuto.addEventListener('click', () => runAutoWifi
 if (dom.btnWifiHome) dom.btnWifiHome.addEventListener('click', () => handleWirelessConnect(getHomeWifiAddr(), 'home'));
 if (dom.btnWifiSchool) dom.btnWifiSchool.addEventListener('click', () => handleWirelessConnect(getSchoolWifiAddr(), 'school'));
 dom.btnDoPairConnect.addEventListener('click', () => handleWirelessConnect(dom.pairConnectAddr.value));
-dom.btnDoConnect.addEventListener('click', () => handleWirelessConnect(dom.quickConnectAddr.value));
+const runQuickManualConnect = () => {
+  let raw = String(dom.quickConnectAddr.value || '').trim();
+  if (/^\d{4,5}$/.test(raw)) {
+    const baseIp = (getSavedWifiAddr() || getSchoolWifiAddr() || '192.168.3.39:5555').split(':')[0];
+    raw = `${baseIp}:${raw}`;
+  }
+  handleWirelessConnect(raw);
+};
+dom.btnDoConnect.addEventListener('click', runQuickManualConnect);
+dom.quickConnectAddr?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    runQuickManualConnect();
+  }
+});
 
 dom.btnDoTcpip.addEventListener('click', async () => {
   const usbDev = state.devices.find((d) => d.transport === 'usb' && d.state === 'device');
