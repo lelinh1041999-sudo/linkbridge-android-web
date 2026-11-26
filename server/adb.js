@@ -427,13 +427,15 @@ async function autoConnectWireless(candidates = []) {
     }
   }
 
+  const reachableClosedHosts = [];
   for (const host of knownHosts) {
     // Skip gateways like .1 unless it's a Hotspot subnet (10.x / 172.16-31.x / 192.168.43.x)
     if (host.endsWith('.1') && classifyWifiProfile(host) === 'school') continue;
     const reachable = await probeHostReachable(host, 650);
     if (!reachable) continue;
+    reachableClosedHosts.push(host);
 
-    const openPorts = await scanWirelessDebugPorts(host, 32768, 49151, 220, 260);
+    const openPorts = await scanWirelessDebugPorts(host, 32768, 49151, 100, 180, 6500);
     for (const port of openPorts) {
       const randAddr = `${host}:${port}`;
       const conn = await connectWireless(randAddr);
@@ -452,6 +454,19 @@ async function autoConnectWireless(candidates = []) {
         };
       }
     }
+  }
+
+  // If we already proved the saved phone IP is online on LAN but both 5555 and Wireless Debugging
+  // ports are closed, don't waste 8s scanning the whole /22 subnet — report clearly right away!
+  if (reachableClosedHosts.length > 0) {
+    const h = reachableClosedHosts[0];
+    return {
+      ok: false,
+      address: null,
+      profile: classifyWifiProfile(h),
+      discovered: false,
+      message: `Đã thấy Samsung S26 tại ${h}, nhưng Android đã đóng cổng 5555 (thường do vừa rớt Wi-Fi hoặc tắt Gỡ lỗi qua Wi-Fi). Hãy bật lại "Gỡ lỗi qua Wi-Fi" trên S26 rồi bấm Kết nối nhanh Wi-Fi lại!`,
+    };
   }
 
   // 4) Universal current-Wi-Fi subnet scan on port 5555 (works on ANY new /24 or /22 Wi-Fi!)
@@ -541,16 +556,37 @@ function probeHostReachable(host, timeoutMs = 650) {
   });
 }
 
-function scanWirelessDebugPorts(host, startPort = 32768, endPort = 49151, concurrency = 220, timeoutMs = 260) {
+function scanWirelessDebugPorts(
+  host,
+  startPort = 32768,
+  endPort = 49151,
+  concurrency = 100,
+  timeoutMs = 180,
+  maxDurationMs = 6500
+) {
   return new Promise((resolve) => {
     const found = [];
     let current = startPort;
     let active = 0;
-    const total = endPort - startPort + 1;
-    let done = 0;
+    let finished = false;
+    const deadline = Date.now() + maxDurationMs;
+
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(hardTimer);
+      resolve(found);
+    };
+
+    const hardTimer = setTimeout(complete, maxDurationMs + 150);
 
     function next() {
-      while (active < concurrency && current <= endPort) {
+      if (finished) return;
+      if (Date.now() >= deadline) {
+        if (active === 0) complete();
+        return;
+      }
+      while (active < concurrency && current <= endPort && Date.now() < deadline) {
         const port = current++;
         active++;
         const socket = net.connect({ host, port });
@@ -561,9 +597,9 @@ function scanWirelessDebugPorts(host, startPort = 32768, endPort = 49151, concur
           if (isOpen) found.push(port);
           socket.destroy();
           active--;
-          done++;
-          if (done >= total) {
-            resolve(found);
+          if (finished) return;
+          if ((current > endPort || Date.now() >= deadline) && active === 0) {
+            complete();
           } else {
             next();
           }
@@ -573,6 +609,7 @@ function scanWirelessDebugPorts(host, startPort = 32768, endPort = 49151, concur
         socket.on('timeout', () => finish(false));
         socket.on('error', () => finish(false));
       }
+      if (active === 0) complete();
     }
 
     next();
