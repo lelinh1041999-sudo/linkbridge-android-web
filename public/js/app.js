@@ -2799,12 +2799,45 @@ const aiBridge = {
   },
 };
 
+const DEFAULT_AI_RELAY_URL = 'https://linhbridge-relay.onrender.com';
+
+function getStartAllCommand() {
+  const relayUrl = ($('ai-relay-url')?.value.trim() || localStorage.getItem('lb_ai_relay_url') || DEFAULT_AI_RELAY_URL).replace(/\/+$/, '');
+  return `cd ~/linkbridge-android-web && ./start-all.sh ${relayUrl}`;
+}
+
+function syncStartAllCmdUi() {
+  const cmd = getStartAllCommand();
+  document.querySelectorAll('.startall-cmd-text').forEach((el) => {
+    el.textContent = cmd;
+  });
+}
+
 aiBridge.saveCreds();
-$('ai-relay-url').value = localStorage.getItem('lb_ai_relay_url') || '';
+$('ai-relay-url').value = localStorage.getItem('lb_ai_relay_url') || DEFAULT_AI_RELAY_URL;
 $('ai-room-id').value = aiBridge.roomId;
 $('ai-room-token').value = aiBridge.token;
+syncStartAllCmdUi();
+
+$('ai-relay-url')?.addEventListener('input', syncStartAllCmdUi);
+
+document.querySelectorAll('.btn-copy-startall').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const cmd = getStartAllCommand();
+    try {
+      await navigator.clipboard.writeText(cmd);
+      const orig = btn.textContent;
+      btn.textContent = 'Đã copy!';
+      toast('Đã copy lệnh mở Local + Phòng AI! Dán vào Terminal Linux là chạy.', 'ok');
+      setTimeout(() => { btn.textContent = orig; }, 1600);
+    } catch {
+      toast('Không tự copy được — hãy bôi đen đoạn lệnh bên dưới để copy.', 'err');
+    }
+  });
+});
 
 const openAiModal = () => {
+  syncStartAllCmdUi();
   $('ai-feedback').className = 'modal-feedback';
   $('ai-modal').showModal();
 };
@@ -2820,7 +2853,7 @@ $('btn-ai-toggle').addEventListener('click', () => {
 $('btn-cb-share')?.addEventListener('click', () => aiBridge.toggleChromebookShare());
 $('btn-ai-regen').addEventListener('click', () => aiBridge.regenerate());
 $('btn-ai-copy').addEventListener('click', async () => {
-  const relayUrl = $('ai-relay-url').value.trim() || '(chưa nhập URL Relay)';
+  const relayUrl = $('ai-relay-url').value.trim() || DEFAULT_AI_RELAY_URL;
   const info = `Relay: ${relayUrl}\nRoom: ${aiBridge.roomId}\nToken: ${aiBridge.token}`;
   try {
     await navigator.clipboard.writeText(info);

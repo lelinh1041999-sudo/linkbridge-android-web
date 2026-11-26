@@ -450,6 +450,19 @@
               </div>
 
               <div class="section-card">
+                <h3 class="section-title">
+                  <span>Mở Local + Phòng cho AI (1 lệnh)</span>
+                  <button class="btn btn-sm btn-primary btn-copy-startall" type="button">Copy lệnh</button>
+                </h3>
+                <p class="section-desc">
+                  Dán vào Terminal Linux (Crostini) để bật đồng thời <code>localhost:3000</code> và phòng AI Bridge cho Chromebook:
+                </p>
+                <div class="tip-box" style="font-family: var(--font-mono); font-size: 11px; user-select: text; word-break: break-all;">
+                  <code class="startall-cmd-text">cd ~/linkbridge-android-web &amp;&amp; ./start-all.sh https://linhbridge-relay.onrender.com</code>
+                </div>
+              </div>
+
+              <div class="section-card">
                 <h3 class="section-title">Điều khiển từ Terminal Crostini</h3>
                 <div class="tip-box" style="font-family: var(--font-mono); font-size: 11px; user-select: text;">
                   ./bin/phone-ctl tap 540 1200<br />
@@ -474,8 +487,12 @@
     </div>
     <div class="modal-body">
       <div id="wifi-bridge-warn" class="tip-box" style="display:none; border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.08);">
-        <strong>Chưa bật Bridge Wi-Fi trên Chromebook:</strong> Trình duyệt Chrome không thể tự quét Wi-Fi LAN nếu không có Bridge chạy ngầm. Chạy 1 lần duy nhất trong Linux Crostini:<br />
-        <code style="display:block; margin-top:6px; user-select:text; color:#f1f3f7;">git clone https://github.com/lelinh1041999-sudo/linkbridge-android-web.git &amp;&amp; cd linkbridge-android-web &amp;&amp; ./install-app.sh</code>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+          <strong>Chưa bật Bridge Wi-Fi trên Chromebook</strong>
+          <button class="btn btn-sm btn-primary btn-copy-startall" type="button">Copy lệnh mở</button>
+        </div>
+        Dán lệnh sau vào Linux Crostini để mở cả <code>localhost:3000</code> và phòng cho AI:<br />
+        <code class="startall-cmd-text" style="display:block; margin-top:6px; user-select:text; color:#f1f3f7; word-break:break-all;">cd ~/linkbridge-android-web &amp;&amp; ./start-all.sh https://linhbridge-relay.onrender.com</code>
       </div>
 
       <div class="modal-tabs" role="tablist">
@@ -576,6 +593,14 @@
 
       <div class="row-actions">
         <button id="btn-cb-share" class="btn" style="flex:1;">Chia sẻ màn hình Chromebook cho AI xem</button>
+      </div>
+
+      <div class="tip-box" style="margin-top:4px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+          <strong>Mở cả Local (<code>localhost:3000</code>) + Phòng Crostini cho AI</strong>
+          <button class="btn btn-sm btn-primary btn-copy-startall" type="button">Copy lệnh</button>
+        </div>
+        <code class="startall-cmd-text" style="display:block; font-family:var(--font-mono); font-size:11px; user-select:text; word-break:break-all; color:#f1f3f7;">cd ~/linkbridge-android-web &amp;&amp; ./start-all.sh https://linhbridge-relay.onrender.com</code>
       </div>
 
       <div id="ai-feedback" class="modal-feedback"></div>
