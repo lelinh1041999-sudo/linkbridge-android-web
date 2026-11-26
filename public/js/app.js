@@ -82,6 +82,17 @@ const dom = {
   hwScreenshot: $('hw-screenshot'),
   hwCoord: $('hw-coord'),
   hwFullscreen: $('hw-fullscreen'),
+  stageArea: document.querySelector('.stage-area'),
+  btnFullscreenTop: $('btn-fullscreen-top'),
+  fsHud: $('fs-hud'),
+  fsBack: $('fs-back'),
+  fsHome: $('fs-home'),
+  fsRecents: $('fs-recents'),
+  fsRotate: $('fs-rotate'),
+  fsFitMode: $('fs-fit-mode'),
+  fsFitLabel: $('fs-fit-label'),
+  fsOled: $('fs-oled'),
+  fsExit: $('fs-exit'),
 
   consoleOutput: $('console-output'),
   consoleForm: $('console-form'),
@@ -286,6 +297,7 @@ function updateOrientation(width, height) {
   if (!width || !height) return;
   dom.phoneBezel.classList.toggle('is-landscape', width > height);
   dom.statRes.textContent = `${width}×${height}`;
+  updateFullscreenLayout(width, height);
 }
 
 // ==========================================================================
@@ -1151,10 +1163,171 @@ dom.hwCoord.addEventListener('click', () => {
   if (state.coordHudOn) toast('Bật thước tọa độ: giữ Shift + Click lên màn hình để lấy lệnh tap', 'ok');
 });
 
-dom.hwFullscreen.addEventListener('click', () => {
-  const target = document.querySelector('.stage-area');
-  if (!document.fullscreenElement) target.requestFullscreen?.().catch(() => {});
-  else document.exitFullscreen?.().catch(() => {});
+// ==========================================================================
+// Fullscreen Controller (Auto-fit Chromebook screen for Portrait & Landscape)
+// ==========================================================================
+
+const FS_MODES = ['fit', 'fill', 'stretch'];
+const FS_MODE_LABELS = {
+  fit: 'Vừa màn',
+  fill: 'Tràn viền',
+  stretch: 'Kéo kín 100%',
+};
+
+let fsHudHideTimer = null;
+
+function isFullscreenActive() {
+  return Boolean(document.fullscreenElement && dom.stageArea && document.fullscreenElement === dom.stageArea);
+}
+
+function getCurrentVideoSize(overrideW, overrideH) {
+  const w = overrideW || (state.demoMode ? demo.width : (client.width || dom.canvas.width || 380));
+  const h = overrideH || (state.demoMode ? demo.height : (client.height || dom.canvas.height || 820));
+  return { w, h };
+}
+
+function getFsFitMode(isLandscape) {
+  const key = isLandscape ? 'linhbridge_fs_mode_land' : 'linhbridge_fs_mode_port';
+  const saved = localStorage.getItem(key);
+  return FS_MODES.includes(saved) ? saved : 'fit';
+}
+
+function setFsFitMode(isLandscape, mode) {
+  const key = isLandscape ? 'linhbridge_fs_mode_land' : 'linhbridge_fs_mode_port';
+  localStorage.setItem(key, mode);
+}
+
+function updateFullscreenLayout(overrideW, overrideH) {
+  const active = isFullscreenActive();
+  dom.stageArea?.classList.toggle('is-fullscreen', active);
+  dom.hwFullscreen?.classList.toggle('is-active', active);
+  dom.btnFullscreenTop?.classList.toggle('is-active', active);
+
+  if (!active) {
+    dom.canvas.style.width = '';
+    dom.canvas.style.height = '';
+    return;
+  }
+
+  const { w, h } = getCurrentVideoSize(overrideW, overrideH);
+  const vw = window.innerWidth || screen.width;
+  const vh = window.innerHeight || screen.height;
+  if (!w || !h || !vw || !vh) return;
+
+  const isLandscape = w > h;
+  const mode = getFsFitMode(isLandscape);
+  let cssW;
+  let cssH;
+
+  if (mode === 'stretch') {
+    cssW = vw;
+    cssH = vh;
+  } else if (mode === 'fill') {
+    const scale = Math.max(vw / w, vh / h);
+    cssW = Math.round(w * scale);
+    cssH = Math.round(h * scale);
+  } else {
+    // 'fit': largest crisp size fitting 100% of Chromebook viewport (both Portrait & Landscape)
+    const scale = Math.min(vw / w, vh / h);
+    cssW = Math.round(w * scale);
+    cssH = Math.round(h * scale);
+  }
+
+  dom.canvas.style.width = `${cssW}px`;
+  dom.canvas.style.height = `${cssH}px`;
+
+  if (dom.fsFitLabel) {
+    dom.fsFitLabel.textContent = `${FS_MODE_LABELS[mode]} (${isLandscape ? 'Ngang' : 'Dọc'})`;
+  }
+  if (dom.fsOled) {
+    dom.fsOled.classList.toggle('is-oled-off', !state.displayPowerOn);
+  }
+}
+
+function showFsHudTemporarily(ms = 2600) {
+  if (!dom.fsHud || !isFullscreenActive()) return;
+  dom.fsHud.classList.remove('is-hidden');
+  clearTimeout(fsHudHideTimer);
+  fsHudHideTimer = setTimeout(() => {
+    if (isFullscreenActive() && !dom.fsHud.matches(':hover')) {
+      dom.fsHud.classList.add('is-hidden');
+    }
+  }, ms);
+}
+
+function toggleFullscreen() {
+  if (!dom.stageArea) return;
+  if (!document.fullscreenElement) {
+    dom.stageArea.requestFullscreen?.().catch(() => {});
+  } else {
+    document.exitFullscreen?.().catch(() => {});
+  }
+}
+
+dom.hwFullscreen?.addEventListener('click', toggleFullscreen);
+dom.btnFullscreenTop?.addEventListener('click', toggleFullscreen);
+dom.fsExit?.addEventListener('click', () => document.exitFullscreen?.().catch(() => {}));
+
+dom.fsBack?.addEventListener('click', () => dom.hwBack?.click());
+dom.fsHome?.addEventListener('click', () => dom.hwHome?.click());
+dom.fsRecents?.addEventListener('click', () => dom.hwRecents?.click());
+dom.fsRotate?.addEventListener('click', () => {
+  dom.hwRotate?.click();
+  showFsHudTemporarily(2800);
+});
+dom.fsOled?.addEventListener('click', () => {
+  dom.hwOled?.click();
+  setTimeout(() => dom.fsOled?.classList.toggle('is-oled-off', !state.displayPowerOn), 120);
+  showFsHudTemporarily(2500);
+});
+
+dom.fsFitMode?.addEventListener('click', () => {
+  const { w, h } = getCurrentVideoSize();
+  const isLandscape = w > h;
+  const current = getFsFitMode(isLandscape);
+  const next = FS_MODES[(FS_MODES.indexOf(current) + 1) % FS_MODES.length];
+  setFsFitMode(isLandscape, next);
+  updateFullscreenLayout();
+  toast(`Toàn màn hình (${isLandscape ? 'Xoay ngang' : 'Xoay dọc'}): ${FS_MODE_LABELS[next]}`, 'ok');
+  showFsHudTemporarily(2800);
+});
+
+document.addEventListener('fullscreenchange', () => {
+  updateFullscreenLayout();
+  if (isFullscreenActive()) {
+    showFsHudTemporarily(3200);
+    setTimeout(focusPhoneKeyboard, 80);
+  } else {
+    clearTimeout(fsHudHideTimer);
+    dom.fsHud?.classList.remove('is-hidden');
+  }
+});
+
+window.addEventListener('resize', () => {
+  if (isFullscreenActive()) updateFullscreenLayout();
+});
+
+dom.stageArea?.addEventListener('pointermove', (e) => {
+  if (!isFullscreenActive()) return;
+  if (e.clientY <= 56) {
+    showFsHudTemporarily(2600);
+  }
+});
+
+dom.fsHud?.addEventListener('pointerenter', () => {
+  clearTimeout(fsHudHideTimer);
+  dom.fsHud.classList.remove('is-hidden');
+});
+
+dom.fsHud?.addEventListener('pointerleave', () => {
+  showFsHudTemporarily(1800);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'f' || e.key === 'F')) {
+    e.preventDefault();
+    toggleFullscreen();
+  }
 });
 
 dom.btnAudioToggle.addEventListener('click', () => {

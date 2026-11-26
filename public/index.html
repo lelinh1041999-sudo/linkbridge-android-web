@@ -122,6 +122,15 @@
           </svg>
         </button>
 
+        <button id="btn-fullscreen-top" class="btn btn-icon" title="Chiếu toàn màn hình khớp Chromebook (Alt+F)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+        </button>
+
         <button id="btn-toggle-drawer" class="btn btn-icon is-active" title="Ẩn / Hiện bảng điều khiển lệnh">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2"></rect>
@@ -240,7 +249,37 @@
           <span><kbd>Click</kbd> Chạm</span>
           <span><kbd>Vuốt 2 ngón</kbd> Lướt / Mở App Drawer</span>
           <span><kbd>Chuột phải</kbd> Back</span>
-          <span><kbd>Ctrl + Kéo</kbd> Zoom 2 ngón</span>
+          <span><kbd>Alt + F</kbd> Toàn màn hình</span>
+        </div>
+
+        <!-- Floating Fullscreen HUD (auto-hides, hover top edge to reveal) -->
+        <div id="fs-hud" class="fs-hud" aria-label="Thanh điều khiển toàn màn hình">
+          <button id="fs-back" class="fs-btn" title="Quay lại (Back)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <button id="fs-home" class="fs-btn" title="Màn hình chính (Home)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"></circle></svg>
+          </button>
+          <button id="fs-recents" class="fs-btn" title="Ứng dụng gần đây">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"></rect></svg>
+          </button>
+          <span class="fs-sep"></span>
+          <button id="fs-rotate" class="fs-btn fs-btn-text" title="Xoay ngang / dọc màn hình điện thoại">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"></path><path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path></svg>
+            <span>Xoay</span>
+          </button>
+          <button id="fs-fit-mode" class="fs-btn fs-btn-text is-accent" title="Đổi kiểu khớp màn hình Chromebook (Vừa màn / Tràn viền / Kéo kín 100%)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><polyline points="7 9 4 12 7 15"></polyline><polyline points="17 9 20 12 17 15"></polyline></svg>
+            <span id="fs-fit-label">Vừa màn</span>
+          </button>
+          <button id="fs-oled" class="fs-btn" title="Tắt / Bật màn hình trên điện thoại (tiết kiệm pin)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+          <span class="fs-sep"></span>
+          <button id="fs-exit" class="fs-btn fs-btn-text" title="Thoát toàn màn hình (ESC)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+            <span>Thoát</span>
+          </button>
         </div>
       </section>
 
