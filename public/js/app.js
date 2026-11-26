@@ -293,6 +293,9 @@ function setConnectionVisual(mode, title = '', desc = '') {
     dom.statRes.textContent = '---';
     dom.statMbps.textContent = '-- Mbps';
   }
+  if (typeof updateFullscreenLayout === 'function') {
+    requestAnimationFrame(() => updateFullscreenLayout());
+  }
 }
 
 function updateOrientation(width, height) {
@@ -577,11 +580,13 @@ dom.btnConnectToggle.addEventListener('click', () => {
 // ==========================================================================
 
 let activePointerDown = false;
+let activePointerId = null;
 let dragStartPt = null;
 let dragStartTime = 0;
 
 function getPhoneCoords(e) {
   const rect = dom.canvas.getBoundingClientRect();
+  const wrapRect = dom.canvas.parentElement?.getBoundingClientRect() || rect;
   const w = state.demoMode ? demo.width : (client.width || dom.canvas.width);
   const h = state.demoMode ? demo.height : (client.height || dom.canvas.height);
   if (!rect.width || !rect.height || !w || !h) return null;
@@ -593,8 +598,10 @@ function getPhoneCoords(e) {
     y: Math.round(ny * (h - 1)),
     w,
     h,
-    cssX: e.clientX - rect.left,
-    cssY: e.clientY - rect.top,
+    cssX: e.clientX - wrapRect.left,
+    cssY: e.clientY - wrapRect.top,
+    mirrorCssX: (rect.left - wrapRect.left) + (rect.width - (e.clientX - rect.left)),
+    mirrorCssY: (rect.top - wrapRect.top) + (rect.height - (e.clientY - rect.top)),
     rectW: rect.width,
     rectH: rect.height,
   };
@@ -611,8 +618,8 @@ function showTouchDots(visible, pt, pinch = false) {
   dom.touchDot1.classList.add('visible');
 
   if (pinch) {
-    dom.touchDot2.style.left = `${pt.rectW - pt.cssX}px`;
-    dom.touchDot2.style.top = `${pt.rectH - pt.cssY}px`;
+    dom.touchDot2.style.left = `${pt.mirrorCssX}px`;
+    dom.touchDot2.style.top = `${pt.mirrorCssY}px`;
     dom.touchDot2.classList.add('visible');
   } else {
     dom.touchDot2.classList.remove('visible');
@@ -674,6 +681,28 @@ function recordMacroLine(line) {
 
 dom.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+const activeTouchPointers = new Map();
+
+function sendNativeTouch(action, pointerId, pt) {
+  if (state.demoMode) {
+    demo.handleTouch(action, pt);
+    return;
+  }
+  if (!state.connected) return;
+  const pressure = action === MOTION_ACTION.UP ? 0.0 : 1.0;
+  client.sendBinary(
+    encodeTouchEvent({
+      action,
+      pointerId: 100n + BigInt(pointerId),
+      x: pt.x,
+      y: pt.y,
+      screenWidth: pt.w,
+      screenHeight: pt.h,
+      pressure,
+    })
+  );
+}
+
 dom.canvas.addEventListener('pointerdown', (e) => {
   if (!state.connected && !state.demoMode) return;
   e.preventDefault();
@@ -682,12 +711,25 @@ dom.canvas.addEventListener('pointerdown', (e) => {
     client.ensureAudioContext();
   }
   lastPointerType = e.pointerType || 'mouse';
+
+  // Native multi-touch passthrough on Chromebook touchscreen (enables real 2-finger pinch-to-zoom!)
   if (e.pointerType === 'touch') {
+    dom.imeProxy.readOnly = true;
     if (document.activeElement === dom.imeProxy) dom.imeProxy.blur();
-  } else {
-    resetImeBuffer();
-    dom.imeProxy.focus({ preventScroll: true });
+
+    const pt = getPhoneCoords(e);
+    if (!pt) return;
+    try { dom.canvas.setPointerCapture(e.pointerId); } catch {}
+    activeTouchPointers.set(e.pointerId, { pt, startPt: pt, startTime: Date.now() });
+    sendNativeTouch(MOTION_ACTION.DOWN, e.pointerId, pt);
+    if (activeTouchPointers.size === 1) showTouchDots(true, pt, false);
+    else showTouchDots(false, null);
+    return;
   }
+
+  dom.imeProxy.readOnly = false;
+  resetImeBuffer();
+  dom.imeProxy.focus({ preventScroll: true });
 
   if (e.button === 1) return triggerHardwareKey('HOME');
   if (e.button === 2 && state.options.rightClickBack) return triggerHardwareKey('BACK');
@@ -703,8 +745,9 @@ dom.canvas.addEventListener('pointerdown', (e) => {
     return;
   }
 
-  dom.canvas.setPointerCapture(e.pointerId);
+  try { dom.canvas.setPointerCapture(e.pointerId); } catch {}
   activePointerDown = true;
+  activePointerId = e.pointerId;
   dragStartPt = pt;
   dragStartTime = Date.now();
 
@@ -717,14 +760,37 @@ dom.canvas.addEventListener('pointermove', (e) => {
   if (pt && state.coordHudOn) {
     dom.coordHud.textContent = `x: ${pt.x}, y: ${pt.y}`;
   }
+
+  if (e.pointerType === 'touch') {
+    const entry = activeTouchPointers.get(e.pointerId);
+    if (!entry || !pt) return;
+    entry.pt = pt;
+    sendNativeTouch(MOTION_ACTION.MOVE, e.pointerId, pt);
+    if (activeTouchPointers.size === 1) showTouchDots(true, pt, false);
+    return;
+  }
+
   if (!activePointerDown || !pt) return;
+  if (activePointerId !== null && e.pointerId !== activePointerId) return;
   showTouchDots(true, pt, e.ctrlKey);
   sendTouch(MOTION_ACTION.MOVE, pt, e.ctrlKey);
 });
 
 function finishPointer(e) {
+  if (e.pointerType === 'touch') {
+    const entry = activeTouchPointers.get(e.pointerId);
+    if (!entry) return;
+    activeTouchPointers.delete(e.pointerId);
+    const pt = getPhoneCoords(e) || entry.pt;
+    if (pt) sendNativeTouch(MOTION_ACTION.UP, e.pointerId, pt);
+    if (activeTouchPointers.size === 0) showTouchDots(false, null);
+    return;
+  }
+
   if (!activePointerDown) return;
+  if (activePointerId !== null && e.pointerId !== activePointerId) return;
   activePointerDown = false;
+  activePointerId = null;
   const pt = getPhoneCoords(e) || dragStartPt;
   showTouchDots(false, null);
   if (pt) {
@@ -1217,51 +1283,76 @@ function setFsFitMode(isLandscape, mode) {
   localStorage.setItem(key, mode);
 }
 
+// Track pointer type globally (capture phase) so touch vs mouse state is always accurate
+window.addEventListener('pointerdown', (e) => {
+  lastPointerType = e.pointerType || 'mouse';
+  if (e.pointerType === 'touch') {
+    dom.imeProxy.readOnly = true;
+    if (document.activeElement === dom.imeProxy) dom.imeProxy.blur();
+  }
+}, true);
+
 function updateFullscreenLayout(overrideW, overrideH) {
   const active = isFullscreenActive();
+  const isLive = Boolean(state.connected || state.demoMode);
   dom.stageArea?.classList.toggle('is-fullscreen', active);
+  dom.phoneBezel?.classList.toggle('is-live', isLive);
   dom.hwFullscreen?.classList.toggle('is-active', active);
   dom.btnFullscreenTop?.classList.toggle('is-active', active);
 
-  if (!active) {
+  // When idle (showing onboarding overlay), let CSS size the onboarding card naturally
+  if (!active && !isLive) {
     dom.canvas.style.width = '';
     dom.canvas.style.height = '';
     return;
   }
 
   const { w, h } = getCurrentVideoSize(overrideW, overrideH);
-  const vw = window.innerWidth || screen.width;
-  const vh = window.innerHeight || screen.height;
-  if (!w || !h || !vw || !vh) return;
+  const stageW = dom.stageArea?.clientWidth || window.innerWidth || screen.width;
+  const stageH = dom.stageArea?.clientHeight || window.innerHeight || screen.height;
+  if (!w || !h || !stageW || !stageH) return;
 
   const isLandscape = w > h;
-  const mode = getFsFitMode(isLandscape);
   let cssW;
   let cssH;
 
-  if (mode === 'stretch') {
-    cssW = vw;
-    cssH = vh;
-  } else if (mode === 'fill') {
-    const scale = Math.max(vw / w, vh / h);
-    cssW = Math.round(w * scale);
-    cssH = Math.round(h * scale);
+  if (active) {
+    const mode = getFsFitMode(isLandscape);
+    if (mode === 'stretch') {
+      cssW = stageW;
+      cssH = stageH;
+    } else if (mode === 'fill') {
+      const scale = Math.max(stageW / w, stageH / h);
+      cssW = Math.round(w * scale);
+      cssH = Math.round(h * scale);
+    } else {
+      // 'fit': largest crisp size fitting 100% of Chromebook viewport (both Portrait & Landscape)
+      const scale = Math.min(stageW / w, stageH / h);
+      cssW = Math.round(w * scale);
+      cssH = Math.round(h * scale);
+    }
+
+    if (dom.fsFitLabel) {
+      dom.fsFitLabel.textContent = `${FS_MODE_LABELS[mode]} (${isLandscape ? 'Ngang' : 'Dọc'})`;
+    }
+    if (dom.fsOled) {
+      dom.fsOled.classList.toggle('is-oled-off', !state.displayPowerOn);
+    }
   } else {
-    // 'fit': largest crisp size fitting 100% of Chromebook viewport (both Portrait & Landscape)
-    const scale = Math.min(vw / w, vh / h);
+    // Windowed / Folded Tablet mode: scale UP or DOWN so 720p/1080p always fills the stage cleanly
+    const isPortraitCb = stageH > stageW;
+    const hwRailReserve = isPortraitCb ? 56 : 74;
+    const bezelPad = isPortraitCb ? 24 : 52;
+    const hintReserve = isPortraitCb ? 14 : 46;
+    const availW = Math.max(220, stageW - hwRailReserve - bezelPad);
+    const availH = Math.max(220, stageH - bezelPad - hintReserve);
+    const scale = Math.min(availW / w, availH / h);
     cssW = Math.round(w * scale);
     cssH = Math.round(h * scale);
   }
 
   dom.canvas.style.width = `${cssW}px`;
   dom.canvas.style.height = `${cssH}px`;
-
-  if (dom.fsFitLabel) {
-    dom.fsFitLabel.textContent = `${FS_MODE_LABELS[mode]} (${isLandscape ? 'Ngang' : 'Dọc'})`;
-  }
-  if (dom.fsOled) {
-    dom.fsOled.classList.toggle('is-oled-off', !state.displayPowerOn);
-  }
 }
 
 function showFsHudTemporarily(ms = 2600) {
@@ -1269,7 +1360,8 @@ function showFsHudTemporarily(ms = 2600) {
   dom.fsHud.classList.remove('is-hidden');
   clearTimeout(fsHudHideTimer);
   fsHudHideTimer = setTimeout(() => {
-    if (isFullscreenActive() && !dom.fsHud.matches(':hover')) {
+    const hoveredWithMouse = lastPointerType !== 'touch' && dom.fsHud.matches(':hover');
+    if (isFullscreenActive() && !hoveredWithMouse) {
       dom.fsHud.classList.add('is-hidden');
     }
   }, ms);
@@ -1314,6 +1406,9 @@ dom.fsFitMode?.addEventListener('click', () => {
 
 document.addEventListener('fullscreenchange', () => {
   updateFullscreenLayout();
+  requestAnimationFrame(() => updateFullscreenLayout());
+  setTimeout(() => updateFullscreenLayout(), 160);
+  setTimeout(() => updateFullscreenLayout(), 360);
   if (isFullscreenActive()) {
     showFsHudTemporarily(3200);
     setTimeout(focusPhoneKeyboard, 80);
@@ -1322,6 +1417,14 @@ document.addEventListener('fullscreenchange', () => {
     dom.fsHud?.classList.remove('is-hidden');
   }
 });
+
+// Observe actual .stage-area dimension changes (fullscreen animations, drawer collapse, Chromebook fold)
+if (typeof ResizeObserver !== 'undefined' && dom.stageArea) {
+  const stageRo = new ResizeObserver(() => {
+    updateFullscreenLayout();
+  });
+  stageRo.observe(dom.stageArea);
+}
 
 let autoOrientOnFold = localStorage.getItem('linhbridge_auto_orient_fold') !== 'false';
 let lastCbPortrait = null;

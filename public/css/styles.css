@@ -414,6 +414,11 @@ button {
   min-height: 300px;
 }
 
+.phone-bezel.is-live .phone-screen-wrap {
+  min-width: 0;
+  min-height: 0;
+}
+
 #screen-canvas {
   display: block;
   max-width: calc(100vw - var(--drawer-w) - 130px);
