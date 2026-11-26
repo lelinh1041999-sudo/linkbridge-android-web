@@ -681,7 +681,10 @@ dom.canvas.addEventListener('pointerdown', (e) => {
   if (state.connected && !state.audioMuted) {
     client.ensureAudioContext();
   }
-  if (e.pointerType !== 'touch') {
+  lastPointerType = e.pointerType || 'mouse';
+  if (e.pointerType === 'touch') {
+    if (document.activeElement === dom.imeProxy) dom.imeProxy.blur();
+  } else {
     resetImeBuffer();
     dom.imeProxy.focus({ preventScroll: true });
   }
@@ -915,7 +918,10 @@ function isTypingInWebUi(el = document.activeElement) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
+let lastPointerType = 'mouse';
+
 function focusPhoneKeyboard() {
+  if (lastPointerType === 'touch') return;
   if (!state.connected && !state.demoMode) return;
   if (document.querySelector('dialog[open]')) return;
   if (isTypingInWebUi()) return;
@@ -1064,6 +1070,9 @@ window.addEventListener('keydown', (e) => {
   if (isTypingInWebUi(e.target) || isTypingInWebUi(document.activeElement)) return;
   if (document.querySelector('dialog[open]')) return;
 
+  // Physical keyboard press: re-enable keyboard proxy immediately
+  lastPointerType = 'mouse';
+
   // Focus hidden IME proxy immediately so this key and all subsequent Telex keys go to phone
   dom.imeProxy.focus({ preventScroll: true });
 
@@ -1073,9 +1082,16 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Keep keyboard ready after clicking phone stage or returning to tab
+// Keep keyboard ready after clicking phone stage with mouse/trackpad or returning to tab (never on touch!)
 window.addEventListener('focus', () => setTimeout(focusPhoneKeyboard, 30));
-document.querySelector('.stage-area')?.addEventListener('pointerup', () => setTimeout(focusPhoneKeyboard, 10));
+document.querySelector('.stage-area')?.addEventListener('pointerup', (e) => {
+  lastPointerType = e.pointerType || 'mouse';
+  if (e.pointerType === 'touch') {
+    if (document.activeElement === dom.imeProxy) dom.imeProxy.blur();
+    return;
+  }
+  setTimeout(focusPhoneKeyboard, 10);
+});
 
 function sendKeycode(action, keycode, metaState = 0) {
   client.sendBinary(encodeKeycodeEvent(action, keycode, 0, metaState));
