@@ -252,7 +252,12 @@
           <span><kbd>Alt + F</kbd> Toàn màn hình</span>
         </div>
 
-        <!-- Floating Fullscreen HUD (auto-hides, hover top edge to reveal) -->
+        <!-- Touch-friendly top pull handle in Fullscreen (for folded Tablet Mode) -->
+        <button id="fs-handle" class="fs-handle" type="button" aria-label="Hiện thanh điều khiển toàn màn hình" title="Chạm để hiện thanh điều khiển">
+          <span></span>
+        </button>
+
+        <!-- Floating Fullscreen HUD (auto-hides, hover top edge or tap handle to reveal) -->
         <div id="fs-hud" class="fs-hud" aria-label="Thanh điều khiển toàn màn hình">
           <button id="fs-back" class="fs-btn" title="Quay lại (Back)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -267,6 +272,10 @@
           <button id="fs-rotate" class="fs-btn fs-btn-text" title="Xoay ngang / dọc màn hình điện thoại">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"></path><path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path></svg>
             <span>Xoay</span>
+          </button>
+          <button id="fs-auto-orient" class="fs-btn fs-btn-text is-accent" title="Tự xoay điện thoại theo chiều dọc khi gập Chromebook">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            <span>Gập dọc</span>
           </button>
           <button id="fs-fit-mode" class="fs-btn fs-btn-text is-accent" title="Đổi kiểu khớp màn hình Chromebook (Vừa màn / Tràn viền / Kéo kín 100%)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><polyline points="7 9 4 12 7 15"></polyline><polyline points="17 9 20 12 17 15"></polyline></svg>

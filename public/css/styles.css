@@ -1315,7 +1315,8 @@ dialog.modal::backdrop {
    True Edge-to-Edge Fullscreen Mode (Portrait & Landscape Fit/Fill/Stretch)
    ========================================================================== */
 
-.fs-hud {
+.fs-hud,
+.fs-handle {
   display: none;
 }
 
@@ -1327,6 +1328,7 @@ dialog.modal::backdrop {
   height: 100vh;
   background: #000000;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .stage-area:fullscreen .phone-rig,
@@ -1376,6 +1378,40 @@ dialog.modal::backdrop {
   display: none;
 }
 
+/* Touch-friendly top pull handle for folded Tablet Mode */
+.stage-area:fullscreen .fs-handle,
+.stage-area.is-fullscreen .fs-handle {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.stage-area:fullscreen .fs-handle span,
+.stage-area.is-fullscreen .fs-handle span {
+  width: 48px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  transition: background 150ms ease, width 150ms ease;
+}
+
+.stage-area:fullscreen .fs-handle:hover span,
+.stage-area.is-fullscreen .fs-handle:hover span {
+  background: rgba(255, 255, 255, 0.72);
+  width: 60px;
+}
+
 /* Floating Auto-Hide Control Pill in Fullscreen */
 .stage-area:fullscreen .fs-hud,
 .stage-area.is-fullscreen .fs-hud {
@@ -1385,11 +1421,14 @@ dialog.modal::backdrop {
   transform: translateX(-50%) translateY(0);
   z-index: 60;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 4px;
+  max-width: calc(100vw - 16px);
   padding: 5px 8px;
-  border-radius: 999px;
-  background: rgba(15, 18, 26, 0.82);
+  border-radius: 20px;
+  background: rgba(15, 18, 26, 0.86);
   border: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -1429,7 +1468,7 @@ dialog.modal::backdrop {
 }
 
 .fs-btn-text {
-  padding: 0 10px;
+  padding: 0 9px;
 }
 
 .fs-btn.is-accent {
@@ -1453,4 +1492,40 @@ dialog.modal::backdrop {
   margin: 0 3px;
   background: rgba(255, 255, 255, 0.16);
 }
+
+/* ==========================================================================
+   Folded Vertical Chromebook (Tablet Portrait Mode)
+   ========================================================================== */
+
+.app-shell.is-tablet-portrait .stage-area {
+  padding: 6px;
+  overscroll-behavior: none;
+}
+
+.app-shell.is-tablet-portrait .phone-rig {
+  gap: 6px;
+}
+
+.app-shell.is-tablet-portrait .phone-bezel {
+  padding: 5px;
+  border-radius: 22px;
+}
+
+.app-shell.is-tablet-portrait .phone-screen-wrap {
+  border-radius: 17px;
+  min-width: 240px;
+  min-height: 420px;
+}
+
+.app-shell.is-tablet-portrait #screen-canvas {
+  max-width: calc(100vw - 66px);
+  max-height: calc(100vh - var(--header-h) - 24px);
+}
+
+.app-shell.is-tablet-portrait .stage-hint,
+.app-shell.is-tablet-portrait .telemetry-strip,
+.app-shell.is-tablet-portrait .brand-sub {
+  display: none;
+}
+
 

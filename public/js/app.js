@@ -85,10 +85,12 @@ const dom = {
   stageArea: document.querySelector('.stage-area'),
   btnFullscreenTop: $('btn-fullscreen-top'),
   fsHud: $('fs-hud'),
+  fsHandle: $('fs-handle'),
   fsBack: $('fs-back'),
   fsHome: $('fs-home'),
   fsRecents: $('fs-recents'),
   fsRotate: $('fs-rotate'),
+  fsAutoOrient: $('fs-auto-orient'),
   fsFitMode: $('fs-fit-mode'),
   fsFitLabel: $('fs-fit-label'),
   fsOled: $('fs-oled'),
@@ -679,8 +681,10 @@ dom.canvas.addEventListener('pointerdown', (e) => {
   if (state.connected && !state.audioMuted) {
     client.ensureAudioContext();
   }
-  resetImeBuffer();
-  dom.imeProxy.focus({ preventScroll: true });
+  if (e.pointerType !== 'touch') {
+    resetImeBuffer();
+    dom.imeProxy.focus({ preventScroll: true });
+  }
 
   if (e.button === 1) return triggerHardwareKey('HOME');
   if (e.button === 2 && state.options.rightClickBack) return triggerHardwareKey('BACK');
@@ -1303,9 +1307,86 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
-window.addEventListener('resize', () => {
-  if (isFullscreenActive()) updateFullscreenLayout();
+let autoOrientOnFold = localStorage.getItem('linhbridge_auto_orient_fold') !== 'false';
+let lastCbPortrait = null;
+let lastAutoRotateTs = 0;
+
+function syncAutoOrientUi() {
+  if (!dom.fsAutoOrient) return;
+  dom.fsAutoOrient.classList.toggle('is-accent', autoOrientOnFold);
+}
+syncAutoOrientUi();
+
+function handleChromebookOrientationChange(fromUserAction = false) {
+  const vw = window.innerWidth || screen.width;
+  const vh = window.innerHeight || screen.height;
+  if (!vw || !vh) return;
+  const cbIsPortrait = vh > vw;
+
+  dom.appShell?.classList.toggle('is-tablet-portrait', cbIsPortrait);
+
+  // When Chromebook is folded vertically into Tablet Portrait mode:
+  if (cbIsPortrait && lastCbPortrait !== true) {
+    // Auto-collapse right drawer so the vertical phone fills the vertical Chromebook
+    if (!dom.appShell?.classList.contains('drawer-collapsed')) {
+      dom.appShell?.classList.add('drawer-collapsed');
+      dom.btnToggleDrawer?.classList.remove('is-active');
+    }
+
+    // If phone is currently Landscape, auto-rotate it to Portrait to match the folded Chromebook!
+    if (autoOrientOnFold && (state.connected || state.demoMode)) {
+      const { w, h } = getCurrentVideoSize();
+      const now = Date.now();
+      if (w > h && now - lastAutoRotateTs > 1500) {
+        lastAutoRotateTs = now;
+        if (state.demoMode) demo.rotate();
+        else client.sendJson({ type: 'rotate' });
+        if (!fromUserAction) {
+          toast('Đã phát hiện gập Chromebook dọc → tự xoay điện thoại theo chiều dọc!', 'ok');
+        }
+      }
+    }
+  }
+
+  lastCbPortrait = cbIsPortrait;
+  if (isFullscreenActive()) {
+    updateFullscreenLayout();
+  }
+}
+
+dom.fsHandle?.addEventListener('click', () => {
+  showFsHudTemporarily(4000);
 });
+
+dom.fsAutoOrient?.addEventListener('click', () => {
+  autoOrientOnFold = !autoOrientOnFold;
+  localStorage.setItem('linhbridge_auto_orient_fold', String(autoOrientOnFold));
+  syncAutoOrientUi();
+  toast(
+    autoOrientOnFold
+      ? 'Bật tự xoay dọc theo Chromebook khi gập máy'
+      : 'Tắt tự xoay theo Chromebook (xoay thủ công)',
+    'ok'
+  );
+  if (autoOrientOnFold) {
+    lastCbPortrait = null;
+    handleChromebookOrientationChange(true);
+  }
+  showFsHudTemporarily(2800);
+});
+
+window.addEventListener('resize', () => {
+  handleChromebookOrientationChange(false);
+});
+
+if (screen.orientation && screen.orientation.addEventListener) {
+  screen.orientation.addEventListener('change', () => {
+    setTimeout(() => handleChromebookOrientationChange(false), 120);
+  });
+}
+
+// Initialize layout immediately if already opened in vertical folded mode
+handleChromebookOrientationChange(true);
 
 dom.stageArea?.addEventListener('pointermove', (e) => {
   if (!isFullscreenActive()) return;
