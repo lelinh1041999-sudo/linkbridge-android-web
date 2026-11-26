@@ -1,6 +1,8 @@
 'use strict';
 
 const { execFile, spawn } = require('child_process');
+const fs = require('fs');
+const net = require('net');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
@@ -272,11 +274,16 @@ async function enableTcpip(serial, port = 5555) {
   if (!res.ok) return { ...res, wifiAddress: null };
 
   let wifiAddress = null;
-  if (meta.wifiIp) {
-    wifiAddress = `${meta.wifiIp}:${p}`;
+  const fallbackIp = serial.includes(':') ? serial.split(':')[0] : '';
+  const targetIp = meta.wifiIp || fallbackIp;
+  if (targetIp) {
+    wifiAddress = `${targetIp}:${p}`;
     // Wait briefly for adbd on phone to restart in TCP mode
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 1600));
     const conn = await connectWireless(wifiAddress);
+    if (conn.ok && serial.includes(':') && serial !== wifiAddress) {
+      await disconnectWireless(serial).catch(() => {});
+    }
     return {
       ok: conn.ok,
       stdout: `${res.stdout}\n${conn.stdout}`.trim(),
@@ -285,6 +292,192 @@ async function enableTcpip(serial, port = 5555) {
     };
   }
   return { ...res, wifiAddress: null };
+}
+
+function probeTcpPort(host, port, timeoutMs = 700) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, timeoutMs);
+    socket.on('connect', () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+function getResolvNameservers() {
+  try {
+    const text = fs.readFileSync('/etc/resolv.conf', 'utf8');
+    const ips = [];
+    for (const line of text.split(/\r?\n/)) {
+      const m = line.trim().match(/^nameserver\s+(\d+\.\d+\.\d+\.\d+)/);
+      if (m) ips.push(m[1]);
+    }
+    return ips;
+  } catch {
+    return [];
+  }
+}
+
+function classifyWifiProfile(addr) {
+  const ip = String(addr || '').split(':')[0];
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.43\.)/.test(ip)) return 'home';
+  return 'school';
+}
+
+async function autoConnectWireless(candidates = []) {
+  // 1) Reuse already connected online wireless device if present
+  const existing = await listDevices();
+  const readyWifi = (existing.devices || []).find((d) => d.transport === 'wifi' && d.state === 'device');
+  if (readyWifi) {
+    return {
+      ok: true,
+      address: readyWifi.serial,
+      profile: classifyWifiProfile(readyWifi.serial),
+      discovered: false,
+      message: `Đã kết nối sẵn tới ${readyWifi.displayName || readyWifi.serial} (${readyWifi.serial})`,
+    };
+  }
+
+  // 2) Build prioritized candidate list: dynamic Hotspot DNS gateway + saved Home/School addresses
+  const seen = new Set();
+  const ordered = [];
+  const addCandidate = (raw) => {
+    const clean = String(raw || '').trim();
+    if (!clean) return;
+    const normalized = clean.includes(':') ? clean : `${clean}:5555`;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      ordered.push(normalized);
+    }
+  };
+
+  const nameservers = getResolvNameservers();
+  for (const ns of nameservers) {
+    // On Samsung Mobile Hotspot, the phone itself acts as the DNS/gateway IP!
+    addCandidate(`${ns}:5555`);
+  }
+  for (const c of candidates) addCandidate(c);
+
+  // Fast parallel TCP probe of known candidates
+  const probed = await Promise.all(
+    ordered.map(async (addr) => {
+      const idx = addr.lastIndexOf(':');
+      const host = addr.slice(0, idx);
+      const port = Number(addr.slice(idx + 1)) || 5555;
+      const open = await probeTcpPort(host, port, 800);
+      return open ? addr : null;
+    })
+  );
+
+  for (const addr of probed.filter(Boolean)) {
+    const conn = await connectWireless(addr);
+    if (conn.ok) {
+      return {
+        ok: true,
+        address: addr,
+        profile: classifyWifiProfile(addr),
+        discovered: false,
+        message: `Đã kết nối Wi-Fi tới ${addr}`,
+      };
+    }
+  }
+
+  // 3) Try ADB mDNS services (works on brand-new Wi-Fi even with random Wireless Debugging port)
+  try {
+    const mdns = await execAdb(['mdns', 'services'], { timeout: 3000 });
+    if (mdns.ok && mdns.stdout) {
+      for (const line of mdns.stdout.split(/\r?\n/)) {
+        const m = line.match(/_adb-tls-connect\._tcp\.?\s+(\d+\.\d+\.\d+\.\d+:\d+)/);
+        if (m) {
+          const conn = await connectWireless(m[1]);
+          if (conn.ok) {
+            return {
+              ok: true,
+              address: m[1],
+              profile: classifyWifiProfile(m[1]),
+              discovered: true,
+              message: `Tự phát hiện qua mDNS tại ${m[1]} và đã kết nối!`,
+            };
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 4) Universal current-Wi-Fi subnet scan on port 5555 (works on ANY new /24 or /22 Wi-Fi!)
+  const prefixes = new Set();
+  const activeIs192 = nameservers.some((ip) => ip.startsWith('192.168.'));
+  // Prioritize saved candidate subnets matching current network family
+  for (const raw of candidates) {
+    const m = String(raw || '').trim().match(/^(\d+\.\d+\.\d+)\.\d+/);
+    if (!m) continue;
+    if (activeIs192 && !m[1].startsWith('192.168.')) continue;
+    if (!activeIs192 && m[1].startsWith('192.168.')) continue;
+    prefixes.add(m[1]);
+  }
+  // Always include current Wi-Fi's own /24 subnet AND its /22 supernet block (e.g. 192.168.1.1 -> .1, .0, .2, .3)
+  for (const ns of nameservers) {
+    const m = ns.match(/^(\d+)\.(\d+)\.(\d+)\.\d+$/);
+    if (!m) continue;
+    const baseA = `${m[1]}.${m[2]}`;
+    const oct3 = Number(m[3]);
+    prefixes.add(`${baseA}.${oct3}`);
+    if (m[1] === '192' && m[2] === '168') {
+      const blockStart = Math.floor(oct3 / 4) * 4;
+      for (let d = 0; d < 4; d++) {
+        prefixes.add(`${baseA}.${blockStart + d}`);
+      }
+    }
+  }
+
+  const scanHosts = [];
+  for (const pfx of [...prefixes].slice(0, 5)) {
+    for (let i = 1; i <= 254; i++) {
+      const cand = `${pfx}.${i}:5555`;
+      if (!seen.has(cand)) scanHosts.push({ host: `${pfx}.${i}`, addr: cand });
+    }
+  }
+
+  const openFound = [];
+  const BATCH = 128;
+  for (let i = 0; i < scanHosts.length && openFound.length === 0; i += BATCH) {
+    const batch = scanHosts.slice(i, i + BATCH);
+    const res = await Promise.all(
+      batch.map(async (item) => ((await probeTcpPort(item.host, 5555, 950)) ? item.addr : null))
+    );
+    openFound.push(...res.filter(Boolean));
+  }
+
+  for (const addr of openFound) {
+    const conn = await connectWireless(addr);
+    if (conn.ok) {
+      return {
+        ok: true,
+        address: addr,
+        profile: classifyWifiProfile(addr),
+        discovered: true,
+        message: `Tự dò thấy Samsung S26 tại ${addr} và đã kết nối!`,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    address: null,
+    profile: null,
+    discovered: false,
+    message: 'Không tìm thấy Samsung S26 mở cổng 5555 trên Hotspot lẫn Wi-Fi trường. Nếu máy vừa khởi động lại, mở Gỡ lỗi không dây và nhập IP:Port mới (app sẽ tự cố định lại cổng 5555).',
+  };
 }
 
 async function runShell(serial, command) {
@@ -396,6 +589,7 @@ module.exports = {
   listDevices,
   pairWireless,
   connectWireless,
+  autoConnectWireless,
   disconnectWireless,
   enableTcpip,
   runShell,

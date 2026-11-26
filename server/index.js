@@ -97,6 +97,17 @@ app.post('/api/adb/connect', async (req, res) => {
   }
 });
 
+app.post('/api/adb/autoconnect', async (req, res) => {
+  try {
+    const { candidates } = req.body || {};
+    const list = Array.isArray(candidates) ? candidates : [];
+    const out = await adb.autoConnectWireless(list);
+    res.status(out.ok ? 200 : 400).json(out);
+  } catch (err) {
+    res.status(400).json({ ok: false, message: err.message });
+  }
+});
+
 app.post('/api/adb/disconnect', async (req, res) => {
   try {
     const { address } = req.body || {};

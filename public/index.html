@@ -463,13 +463,22 @@
       <!-- Pane B: Quick Connect -->
       <div id="mpane-connect" class="modal-pane">
         <div class="tip-box">
-          Nếu Samsung S26 đã ghép nối với Chromebook trước đó, chỉ cần mở <strong>Gỡ lỗi không dây</strong> và nhập <strong>IP:Port</strong> đang hiển thị:
+          Bấm <strong>Tự dò (Nhà &amp; Trường)</strong> để tự nhận Samsung S26 ở cả <strong>Hotspot tại nhà</strong> lẫn <strong>Wi-Fi trường</strong> (cổng <code>5555</code>). Hoặc chọn nhanh 1 mạng bên dưới:
         </div>
-        <div class="form-field">
-          <label class="form-label" for="quick-connect-addr">IP:Port</label>
-          <input id="quick-connect-addr" class="input-field" placeholder="192.168.1.25:41289" />
+        <button id="btn-wifi-auto" class="btn btn-primary" style="width:100%;">Tự dò &amp; Kết nối ngay (Nhà &amp; Trường)</button>
+        <div class="form-grid" style="margin-top:8px;">
+          <button id="btn-wifi-home" class="btn" type="button">Ở nhà (Hotspot)</button>
+          <button id="btn-wifi-school" class="btn" type="button">Ở trường (Wi-Fi)</button>
         </div>
-        <button id="btn-do-connect" class="btn btn-primary">Kết nối ngay</button>
+        <div class="form-field" style="margin-top:10px;">
+          <label class="form-label" for="quick-connect-addr">Hoặc nhập IP:Port thủ công (khi máy vừa khởi động lại)</label>
+          <input id="quick-connect-addr" class="input-field" placeholder="192.168.3.39:5555" />
+        </div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; opacity:0.85; margin-bottom:10px; cursor:pointer;">
+          <input id="chk-auto-tcpip" type="checkbox" checked />
+          Tự cố định sang cổng 5555 sau khi nối (để lần sau bấm 1 chạm)
+        </label>
+        <button id="btn-do-connect" class="btn">Kết nối theo IP:Port đã nhập</button>
       </div>
 
       <!-- Pane C: USB to Wi-Fi -->

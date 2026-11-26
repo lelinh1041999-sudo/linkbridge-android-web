@@ -128,6 +128,10 @@ const dom = {
   quickConnectAddr: $('quick-connect-addr'),
   btnDoPair: $('btn-do-pair'),
   btnDoPairConnect: $('btn-do-pair-connect'),
+  btnWifiAuto: $('btn-wifi-auto'),
+  btnWifiHome: $('btn-wifi-home'),
+  btnWifiSchool: $('btn-wifi-school'),
+  chkAutoTcpip: $('chk-auto-tcpip'),
   btnDoConnect: $('btn-do-connect'),
   btnDoTcpip: $('btn-do-tcpip'),
   wifiFeedback: $('wifi-feedback'),
@@ -1634,27 +1638,58 @@ dom.btnCopyFromPhone.addEventListener('click', async () => {
 // Wireless Debugging Modal & Saved 1-Click Wi-Fi Address
 // ==========================================================================
 
-const DEFAULT_WIFI_ADDR = '10.240.253.97:5555';
+const DEFAULT_HOME_WIFI_ADDR = '10.240.253.97:5555';
+const DEFAULT_SCHOOL_WIFI_ADDR = '192.168.3.39:5555';
 
-function getSavedWifiAddr() {
-  return (localStorage.getItem('lb_last_wifi_addr') || DEFAULT_WIFI_ADDR).trim();
+function classifyWifiProfile(addr) {
+  const ip = String(addr || '').split(':')[0];
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.43\.)/.test(ip)) return 'home';
+  return 'school';
 }
 
-function saveWifiAddr(addr) {
+function getHomeWifiAddr() {
+  return (localStorage.getItem('lb_wifi_home') || DEFAULT_HOME_WIFI_ADDR).trim();
+}
+
+function getSchoolWifiAddr() {
+  return (localStorage.getItem('lb_wifi_school') || DEFAULT_SCHOOL_WIFI_ADDR).trim();
+}
+
+function getSavedWifiAddr() {
+  return (localStorage.getItem('lb_last_wifi_addr') || getSchoolWifiAddr()).trim();
+}
+
+function saveWifiAddr(addr, explicitProfile = null) {
   const clean = String(addr || '').trim();
   if (!clean) return;
   localStorage.setItem('lb_last_wifi_addr', clean);
+  const profile = explicitProfile || classifyWifiProfile(clean);
+  if (profile === 'home') {
+    localStorage.setItem('lb_wifi_home', clean);
+  } else {
+    localStorage.setItem('lb_wifi_school', clean);
+  }
   if (dom.quickConnectAddr) dom.quickConnectAddr.value = clean;
   updateSavedWifiUi();
 }
 
 function updateSavedWifiUi() {
-  const addr = getSavedWifiAddr();
+  const home = getHomeWifiAddr();
+  const school = getSchoolWifiAddr();
+  const last = getSavedWifiAddr();
   if (dom.quickConnectAddr && !dom.quickConnectAddr.value) {
-    dom.quickConnectAddr.value = addr;
+    dom.quickConnectAddr.value = last;
   }
   if (dom.btnOverlayWifi) {
-    dom.btnOverlayWifi.textContent = `Kết nối Wi-Fi 1 chạm (${addr})`;
+    dom.btnOverlayWifi.textContent = 'Kết nối Wi-Fi tự động (Nhà & Trường)';
+  }
+  if (dom.btnWifiHome) {
+    dom.btnWifiHome.textContent = `Ở nhà (${home.split(':')[0]})`;
+    dom.btnWifiHome.title = `Hotspot: ${home}`;
+  }
+  if (dom.btnWifiSchool) {
+    dom.btnWifiSchool.textContent = `Ở trường (${school.split(':')[0]})`;
+    dom.btnWifiSchool.title = `Wi-Fi trường: ${school}`;
   }
 }
 
@@ -1680,32 +1715,50 @@ function openWifiModal() {
 updateSavedWifiUi();
 
 dom.btnOpenWifi.addEventListener('click', openWifiModal);
-// 1-click direct Wi-Fi reconnect from the main overlay!
-dom.btnOverlayWifi.addEventListener('click', async () => {
-  const addr = getSavedWifiAddr();
-  if (state.bridgeOnline && addr) {
-    toast(`Đang kết nối Wi-Fi tới ${addr}...`, 'ok');
-    setConnectionVisual('connecting', `Đang kết nối Wi-Fi (${addr})...`, 'Đang mở luồng hình ảnh từ Samsung S26.');
-    try {
-      const res = await fetch(apiUrl('/api/adb/connect'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: addr }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        saveWifiAddr(addr);
-        await refreshDevices(addr);
-        startBridgeStream(false);
-        return;
-      }
-      setConnectionVisual('idle');
-      openWifiModal();
-      setModalFeedback(false, data.message || `Không nối được ${addr}. Kiểm tra lại Wi-Fi/Hotspot.`);
-    } catch {
+async function runAutoWifiConnect(fromOverlay = false) {
+  const candidates = [getSavedWifiAddr(), getSchoolWifiAddr(), getHomeWifiAddr()];
+  if (fromOverlay) {
+    toast('Đang tự dò Samsung S26 (Hotspot & Wi-Fi trường)...', 'ok');
+    setConnectionVisual('connecting', 'Đang tự dò Wi-Fi (Nhà & Trường)...', 'Đang tìm Samsung S26 trên Hotspot hoặc Wi-Fi hiện tại.');
+  } else {
+    setModalFeedback(true, 'Đang tự dò Samsung S26 trên Hotspot & Wi-Fi trường...');
+  }
+  try {
+    const res = await fetch(apiUrl('/api/adb/autoconnect'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidates }),
+    });
+    const data = await res.json();
+    if (data.ok && data.address) {
+      saveWifiAddr(data.address, data.profile);
+      const label = data.profile === 'home' ? 'Hotspot ở nhà' : 'Wi-Fi ở trường';
+      toast(`Đã nối ${label}: ${data.address}`, 'ok');
+      await refreshDevices(data.address);
+      if (dom.wifiModal.open) dom.wifiModal.close();
+      startBridgeStream(false);
+      return true;
+    }
+    if (fromOverlay) {
       setConnectionVisual('idle');
       openWifiModal();
     }
+    setModalFeedback(false, data.message || 'Không tìm thấy máy mở cổng 5555.');
+    return false;
+  } catch {
+    if (fromOverlay) {
+      setConnectionVisual('idle');
+      openWifiModal();
+    }
+    setModalFeedback(false, 'Không kết nối được Bridge Wi-Fi tại ' + (getBridgeBase() || location.origin));
+    return false;
+  }
+}
+
+// 1-click smart dual-network Wi-Fi reconnect from the main overlay!
+dom.btnOverlayWifi.addEventListener('click', async () => {
+  if (state.bridgeOnline) {
+    await runAutoWifiConnect(true);
   } else {
     openWifiModal();
   }
@@ -1750,9 +1803,9 @@ dom.btnDoPair.addEventListener('click', async () => {
   }
 });
 
-async function handleWirelessConnect(address) {
+async function handleWirelessConnect(address, explicitProfile = null) {
   const clean = String(address || '').trim();
-  if (!clean) return setModalFeedback(false, 'Hãy nhập địa chỉ IP:Port (vd: 10.240.253.97:5555).');
+  if (!clean) return setModalFeedback(false, 'Hãy nhập địa chỉ IP:Port (vd: 192.168.3.39:5555).');
 
   setModalFeedback(true, `Đang kết nối tới ${clean}...`);
   try {
@@ -1762,20 +1815,43 @@ async function handleWirelessConnect(address) {
       body: JSON.stringify({ address: clean }),
     });
     const data = await res.json();
-    setModalFeedback(data.ok, data.message);
-    if (data.ok) {
-      saveWifiAddr(clean);
-      await refreshDevices(clean);
-      setTimeout(() => {
-        dom.wifiModal.close();
-        startBridgeStream(false);
-      }, 450);
+    if (!data.ok) {
+      setModalFeedback(false, data.message);
+      return;
     }
+
+    let finalAddr = clean;
+    const portPart = clean.includes(':') ? clean.split(':').pop() : '5555';
+    if (portPart !== '5555' && dom.chkAutoTcpip && dom.chkAutoTcpip.checked) {
+      setModalFeedback(true, `Đã nối ${clean}! Đang tự cố định sang cổng 5555...`);
+      try {
+        const tcpRes = await fetch(apiUrl('/api/adb/tcpip'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serial: clean, port: 5555 }),
+        });
+        const tcpData = await tcpRes.json();
+        if (tcpData.ok && tcpData.wifiAddress) {
+          finalAddr = tcpData.wifiAddress;
+        }
+      } catch {}
+    }
+
+    setModalFeedback(true, `Đã kết nối thành công tại ${finalAddr}!`);
+    saveWifiAddr(finalAddr, explicitProfile);
+    await refreshDevices(finalAddr);
+    setTimeout(() => {
+      dom.wifiModal.close();
+      startBridgeStream(false);
+    }, 450);
   } catch {
     setModalFeedback(false, 'Không kết nối được Bridge Wi-Fi. Hãy chạy ./install-app.sh trên Chromebook hoặc dùng chế độ USB trực tiếp.');
   }
 }
 
+if (dom.btnWifiAuto) dom.btnWifiAuto.addEventListener('click', () => runAutoWifiConnect(false));
+if (dom.btnWifiHome) dom.btnWifiHome.addEventListener('click', () => handleWirelessConnect(getHomeWifiAddr(), 'home'));
+if (dom.btnWifiSchool) dom.btnWifiSchool.addEventListener('click', () => handleWirelessConnect(getSchoolWifiAddr(), 'school'));
 dom.btnDoPairConnect.addEventListener('click', () => handleWirelessConnect(dom.pairConnectAddr.value));
 dom.btnDoConnect.addEventListener('click', () => handleWirelessConnect(dom.quickConnectAddr.value));
 
