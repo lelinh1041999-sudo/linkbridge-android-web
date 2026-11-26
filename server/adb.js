@@ -414,6 +414,46 @@ async function autoConnectWireless(candidates = []) {
     }
   } catch {}
 
+  // 3.5) If port 5555 is closed on a known saved/hotspot IP (e.g. phone rebooted or toggled
+  // Wireless Debugging so the port jumped to a random 32768-49151 port), check if the IP is
+  // actually reachable (ECONNREFUSED) and auto-scan its Wireless Debugging port, then lock 5555!
+  const knownHosts = [];
+  const seenHosts = new Set();
+  for (const addr of ordered) {
+    const h = addr.slice(0, addr.lastIndexOf(':'));
+    if (h && !seenHosts.has(h)) {
+      seenHosts.add(h);
+      knownHosts.push(h);
+    }
+  }
+
+  for (const host of knownHosts) {
+    // Skip gateways like .1 unless it's a Hotspot subnet (10.x / 172.16-31.x / 192.168.43.x)
+    if (host.endsWith('.1') && classifyWifiProfile(host) === 'school') continue;
+    const reachable = await probeHostReachable(host, 650);
+    if (!reachable) continue;
+
+    const openPorts = await scanWirelessDebugPorts(host, 32768, 49151, 220, 260);
+    for (const port of openPorts) {
+      const randAddr = `${host}:${port}`;
+      const conn = await connectWireless(randAddr);
+      if (conn.ok) {
+        // Auto-lock to fixed port 5555 so next 1-click connect is instant (<150ms)
+        const locked = await enableTcpip(randAddr, 5555).catch(() => ({ ok: false }));
+        const finalAddr = locked.ok && locked.wifiAddress ? locked.wifiAddress : randAddr;
+        return {
+          ok: true,
+          address: finalAddr,
+          profile: classifyWifiProfile(finalAddr),
+          discovered: true,
+          message: locked.ok
+            ? `Tự dò thấy cổng mới ${port} tại ${host} và đã khóa lại cổng 5555!`
+            : `Tự dò thấy cổng mới ${randAddr} và đã kết nối!`,
+        };
+      }
+    }
+  }
+
   // 4) Universal current-Wi-Fi subnet scan on port 5555 (works on ANY new /24 or /22 Wi-Fi!)
   const prefixes = new Set();
   const activeIs192 = nameservers.some((ip) => ip.startsWith('192.168.'));
@@ -476,8 +516,67 @@ async function autoConnectWireless(candidates = []) {
     address: null,
     profile: null,
     discovered: false,
-    message: 'Không tìm thấy Samsung S26 mở cổng 5555 trên Hotspot lẫn Wi-Fi trường. Nếu máy vừa khởi động lại, mở Gỡ lỗi không dây và nhập IP:Port mới (app sẽ tự cố định lại cổng 5555).',
+    message: 'Không tìm thấy Samsung S26 trên Hotspot lẫn Wi-Fi trường. Hãy thử tắt/bật Wi-Fi trên S26 hoặc mở Gỡ lỗi qua Wi-Fi.',
   };
+}
+
+function probeHostReachable(host, timeoutMs = 650) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port: 5555 });
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, timeoutMs);
+    socket.on('connect', () => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', (err) => {
+      clearTimeout(timer);
+      socket.destroy();
+      // ECONNREFUSED proves the host is online on LAN and actively replied with TCP RST
+      resolve(err && err.code === 'ECONNREFUSED');
+    });
+  });
+}
+
+function scanWirelessDebugPorts(host, startPort = 32768, endPort = 49151, concurrency = 220, timeoutMs = 260) {
+  return new Promise((resolve) => {
+    const found = [];
+    let current = startPort;
+    let active = 0;
+    const total = endPort - startPort + 1;
+    let done = 0;
+
+    function next() {
+      while (active < concurrency && current <= endPort) {
+        const port = current++;
+        active++;
+        const socket = net.connect({ host, port });
+        let settled = false;
+        const finish = (isOpen) => {
+          if (settled) return;
+          settled = true;
+          if (isOpen) found.push(port);
+          socket.destroy();
+          active--;
+          done++;
+          if (done >= total) {
+            resolve(found);
+          } else {
+            next();
+          }
+        };
+        socket.setTimeout(timeoutMs);
+        socket.on('connect', () => finish(true));
+        socket.on('timeout', () => finish(false));
+        socket.on('error', () => finish(false));
+      }
+    }
+
+    next();
+  });
 }
 
 async function runShell(serial, command) {
