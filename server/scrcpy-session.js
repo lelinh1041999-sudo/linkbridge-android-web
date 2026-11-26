@@ -243,7 +243,7 @@ class ScrcpySession extends EventEmitter {
         `max_size=${this.options.maxSize}`,
         `video_bit_rate=${this.options.bitRate}`,
         `max_fps=${this.options.maxFps}`,
-        'video_codec_options=i-frame-interval=5',
+        'video_codec_options=i-frame-interval=2',
         `stay_awake=${this.options.stayAwake ? 'true' : 'false'}`,
         'power_on=true',
         'clipboard_autosync=true',
@@ -385,7 +385,7 @@ class ScrcpySession extends EventEmitter {
           this.lastVideoKeyFrame = frame;
         }
 
-        this.broadcastBinary(frame, isConfig || isKeyFrame);
+        this.broadcastBinary(frame, { isVideo: true, critical: isConfig || isKeyFrame });
       },
       onStreamDisabled: (isError) => {
         this.broadcastJson({
@@ -422,7 +422,7 @@ class ScrcpySession extends EventEmitter {
           const flags = isConfig ? 1 : 0;
           const frame = packWsMediaFrame(WS_FRAME_AUDIO, flags, pts, data);
           if (isConfig) this.lastAudioConfigFrame = frame;
-          this.broadcastBinary(frame, isConfig);
+          this.broadcastBinary(frame, { isVideo: false, critical: isConfig });
         },
       });
       this.audioSocket.on('data', (chunk) => audioParser.feed(chunk));
@@ -446,6 +446,7 @@ class ScrcpySession extends EventEmitter {
       clearTimeout(this.idleDestroyTimer);
       this.idleDestroyTimer = null;
     }
+    ws._awaitingVideoKeyFrame = false;
     this.clients.add(ws);
 
     // Replay current metadata & SPS/PPS + last keyframe so the client paints immediately
@@ -490,12 +491,35 @@ class ScrcpySession extends EventEmitter {
     }
   }
 
-  broadcastBinary(buf, critical = false) {
+  broadcastBinary(buf, opts = {}) {
+    const isVideo = typeof opts === 'object' ? Boolean(opts.isVideo) : false;
+    const critical = typeof opts === 'object' ? Boolean(opts.critical) : Boolean(opts);
+    let needResetVideo = false;
     for (const ws of this.clients) {
       if (ws.readyState !== 1) continue;
-      // Only drop non-critical frames on severe stall (> 2MB queued) to avoid breaking H.264 GOP
-      if (!critical && ws.bufferedAmount > 2 * 1024 * 1024) continue;
+      if (isVideo) {
+        if (critical) {
+          ws._awaitingVideoKeyFrame = false;
+        } else {
+          // Never send orphaned P-frames after a drop — causes severe H.264 smearing/streaking!
+          if (ws._awaitingVideoKeyFrame) continue;
+          if (ws.bufferedAmount > 2 * 1024 * 1024) {
+            ws._awaitingVideoKeyFrame = true;
+            needResetVideo = true;
+            continue;
+          }
+        }
+      } else if (!critical && ws.bufferedAmount > 2 * 1024 * 1024) {
+        continue;
+      }
       ws.send(buf);
+    }
+    if (needResetVideo) {
+      const now = Date.now();
+      if (!this._lastBackpressureResetAt || now - this._lastBackpressureResetAt > 1500) {
+        this._lastBackpressureResetAt = now;
+        this.resetVideo();
+      }
     }
   }
 

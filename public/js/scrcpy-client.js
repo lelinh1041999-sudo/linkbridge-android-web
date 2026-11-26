@@ -155,7 +155,8 @@ function toWsBase(httpBase) {
 export class ScrcpyWebClient {
   constructor(canvas, callbacks = {}) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    // Do NOT use desynchronized: true — on ChromeOS it bypasses vsync and causes horizontal screen tearing on video
+    this.ctx = canvas.getContext('2d', { alpha: false });
     this.cb = callbacks;
 
     this.transportMode = null; // 'ws' | 'webusb'
@@ -169,7 +170,9 @@ export class ScrcpyWebClient {
     this.videoDecoder = null;
     this.lastConfigBytes = null;
     this.awaitingKeyFrame = true;
-    this.latestFrame = null;
+    this.frameQueue = [];
+    this.maxFrameQueue = 2; // Tiny 2-frame jitter buffer absorbs Wi-Fi TCP bursts without adding latency
+    this.lastResetVideoAt = 0;
     this.rafId = null;
     this.decodeTimes = new Map();
     this.smoothedLatencyMs = 0;
@@ -333,6 +336,7 @@ export class ScrcpyWebClient {
       this.videoDecoder = null;
     }
 
+    this._clearFrameQueue();
     this.awaitingKeyFrame = true;
     this.decodeTimes.clear();
 
@@ -344,15 +348,16 @@ export class ScrcpyWebClient {
           this.decodeTimes.delete(frame.timestamp);
           this.smoothedLatencyMs = this.smoothedLatencyMs === 0 ? dt : this.smoothedLatencyMs * 0.8 + dt * 0.2;
         }
-        if (this.latestFrame) {
-          this.latestFrame.close();
+        this.frameQueue.push(frame);
+        while (this.frameQueue.length > this.maxFrameQueue) {
+          const stale = this.frameQueue.shift();
+          try { stale.close(); } catch {}
         }
-        this.latestFrame = frame;
       },
       error: (err) => {
         console.warn('[VideoDecoder error]', err);
         this.awaitingKeyFrame = true;
-        this.sendJson({ type: 'reset_video' });
+        this._requestResetVideo();
       },
     });
 
@@ -361,6 +366,20 @@ export class ScrcpyWebClient {
       optimizeForLatency: true,
       hardwareAcceleration: 'prefer-hardware',
     });
+  }
+
+  _clearFrameQueue() {
+    while (this.frameQueue.length > 0) {
+      const f = this.frameQueue.shift();
+      try { f.close(); } catch {}
+    }
+  }
+
+  _requestResetVideo() {
+    const now = performance.now();
+    if (now - this.lastResetVideoAt < 1500) return;
+    this.lastResetVideoAt = now;
+    this.sendJson({ type: 'reset_video' });
   }
 
   handleVideoPacket(flags, pts, payload) {
@@ -376,10 +395,10 @@ export class ScrcpyWebClient {
 
     if (!this.videoDecoder || this.videoDecoder.state !== 'configured') return;
     if (this.awaitingKeyFrame && !isKeyFrame) return;
-    // Never drop a single P-frame mid-GOP without resetting to a keyframe (dropping a delta frame freezes H.264!)
+    // Never drop a single P-frame mid-GOP without resetting to a keyframe (dropping a delta frame corrupts H.264!)
     if (!isKeyFrame && this.videoDecoder.decodeQueueSize > 12) {
       this.awaitingKeyFrame = true;
-      this.sendJson({ type: 'reset_video' });
+      this._requestResetVideo();
       return;
     }
 
@@ -523,9 +542,8 @@ export class ScrcpyWebClient {
   _startRenderLoop() {
     if (this.rafId) cancelAnimationFrame(this.rafId);
     const tick = () => {
-      if (this.latestFrame) {
-        const frame = this.latestFrame;
-        this.latestFrame = null;
+      if (this.frameQueue.length > 0) {
+        const frame = this.frameQueue.shift();
         if (this.canvas.width !== frame.displayWidth || this.canvas.height !== frame.displayHeight) {
           this.canvas.width = frame.displayWidth;
           this.canvas.height = frame.displayHeight;
@@ -573,10 +591,7 @@ export class ScrcpyWebClient {
       clearInterval(this.fpsTimer);
       this.fpsTimer = null;
     }
-    if (this.latestFrame) {
-      this.latestFrame.close();
-      this.latestFrame = null;
-    }
+    this._clearFrameQueue();
     if (this.videoDecoder) {
       try { this.videoDecoder.close(); } catch {}
       this.videoDecoder = null;
