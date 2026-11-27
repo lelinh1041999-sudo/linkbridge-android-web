@@ -383,7 +383,18 @@ export class ScrcpyWebClient {
       error: (err) => {
         console.warn('[VideoDecoder error]', err);
         this.awaitingKeyFrame = true;
+        this.videoDecoder = null;
+        if (this.videoCodec === 'h265') {
+          this.cb.onError?.('H.265 (HEVC) không tương thích hoàn toàn trên máy này nên bị đơ hình — hãy đổi Chuẩn nén video về lại H.264 trong Cài đặt!');
+          return;
+        }
         this._requestResetVideo();
+        if (this.lastConfigBytes) {
+          const cs = extractAvcCodecString(this.lastConfigBytes);
+          setTimeout(() => {
+            if (!this.videoDecoder && this.lastConfigBytes) this._initVideoDecoder(cs);
+          }, 80);
+        }
       },
     });
 
