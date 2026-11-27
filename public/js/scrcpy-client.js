@@ -167,6 +167,7 @@ export class ScrcpyWebClient {
     this.height = 0;
 
     // Video decode state
+    this.videoCodec = 'h264';
     this.videoDecoder = null;
     this.lastConfigBytes = null;
     this.awaitingKeyFrame = true;
@@ -193,6 +194,24 @@ export class ScrcpyWebClient {
     return typeof window !== 'undefined' && typeof window.VideoDecoder === 'function';
   }
 
+  static async isHevcSupported() {
+    if (!ScrcpyWebClient.isWebCodecsSupported() || typeof VideoDecoder.isConfigSupported !== 'function') {
+      return false;
+    }
+    const candidates = ['hev1.1.6.L120.90', 'hvc1.1.6.L120.90'];
+    for (const codec of candidates) {
+      try {
+        const res = await VideoDecoder.isConfigSupported({
+          codec,
+          optimizeForLatency: true,
+          hardwareAcceleration: 'prefer-hardware',
+        });
+        if (res && res.supported) return true;
+      } catch {}
+    }
+    return false;
+  }
+
   _startLoops() {
     this._startRenderLoop();
     if (this.fpsTimer) clearInterval(this.fpsTimer);
@@ -214,6 +233,7 @@ export class ScrcpyWebClient {
     this.transportMode = 'ws';
     this.serial = serial;
     this.audioEnabled = options.audio !== false;
+    this.videoCodec = options.videoCodec === 'h265' ? 'h265' : 'h264';
 
     const params = new URLSearchParams({
       maxSize: String(options.maxSize !== undefined && options.maxSize !== null ? options.maxSize : 1080),
@@ -222,7 +242,7 @@ export class ScrcpyWebClient {
       audio: String(this.audioEnabled),
       stayAwake: String(Boolean(options.stayAwake)),
       turnScreenOff: String(Boolean(options.turnScreenOff)),
-      videoCodec: options.videoCodec || 'h264',
+      videoCodec: this.videoCodec,
       restart: String(Boolean(forceRestart)),
     });
 
@@ -267,10 +287,14 @@ export class ScrcpyWebClient {
     this.transportMode = 'webusb';
     this.webUsbDriver = driver;
     this.audioEnabled = options.audio !== false;
+    this.videoCodec = options.videoCodec === 'h265' ? 'h265' : 'h264';
     this._startLoops();
   }
 
   applyMeta(meta) {
+    if (meta.videoCodec) {
+      this.videoCodec = meta.videoCodec;
+    }
     if (meta.width > 0 && meta.height > 0) {
       this.width = meta.width;
       this.height = meta.height;
@@ -361,11 +385,20 @@ export class ScrcpyWebClient {
       },
     });
 
-    this.videoDecoder.configure({
-      codec: codecString,
-      optimizeForLatency: true,
-      hardwareAcceleration: 'prefer-hardware',
-    });
+    try {
+      this.videoDecoder.configure({
+        codec: codecString,
+        optimizeForLatency: true,
+        hardwareAcceleration: 'prefer-hardware',
+      });
+    } catch (err) {
+      console.warn('[VideoDecoder configure failed]', codecString, err);
+      this.cb.onError?.(
+        this.videoCodec === 'h265'
+          ? 'Trình duyệt/GPU Chromebook này chưa hỗ trợ giải mã H.265 (HEVC). Hãy đổi Chuẩn nén video về lại H.264 trong Cài đặt.'
+          : `Không thể khởi tạo bộ giải mã video (${codecString}).`
+      );
+    }
   }
 
   _clearFrameQueue() {
@@ -388,7 +421,9 @@ export class ScrcpyWebClient {
 
     if (isConfig) {
       this.lastConfigBytes = new Uint8Array(payload);
-      const codecString = extractAvcCodecString(this.lastConfigBytes);
+      const codecString = this.videoCodec === 'h265'
+        ? 'hev1.1.6.L120.90'
+        : extractAvcCodecString(this.lastConfigBytes);
       this._initVideoDecoder(codecString);
       return;
     }

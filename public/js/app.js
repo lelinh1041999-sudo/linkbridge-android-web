@@ -134,6 +134,8 @@ const dom = {
   setFps: $('set-fps'),
   setBitrate: $('set-bitrate'),
   setBitrateVal: $('set-bitrate-val'),
+  setCodec: $('set-codec'),
+  setCodecHint: $('set-codec-hint'),
   setAudio: $('set-audio'),
   setScreenOff: $('set-screenoff'),
   setStayAwake: $('set-stayawake'),
@@ -197,6 +199,7 @@ const state = {
     maxSize: 1080,
     maxFps: 60,
     bitRate: 8_000_000,
+    videoCodec: localStorage.getItem('lb_video_codec') === 'h265' ? 'h265' : 'h264',
     audio: true,
     stayAwake: false,
     turnScreenOff: false,
@@ -1717,12 +1720,30 @@ function readSettingsFromForm() {
   state.options.maxSize = Number(dom.setMaxSize.value);
   state.options.maxFps = Number(dom.setFps.value);
   state.options.bitRate = Number(dom.setBitrate.value) * 1_000_000;
+  if (dom.setCodec) {
+    state.options.videoCodec = dom.setCodec.value === 'h265' ? 'h265' : 'h264';
+    localStorage.setItem('lb_video_codec', state.options.videoCodec);
+  }
   state.options.audio = dom.setAudio.checked;
   state.options.turnScreenOff = dom.setScreenOff.checked;
   state.options.stayAwake = dom.setStayAwake.checked;
   state.options.rightClickBack = dom.setRightBack.checked;
   if (dom.setTouchSwipe) state.options.touchSwipeScroll = dom.setTouchSwipe.checked;
   if (dom.setInvertSwipe) state.options.invertTouchSwipe = dom.setInvertSwipe.checked;
+}
+
+if (dom.setCodec) {
+  dom.setCodec.value = state.options.videoCodec;
+  dom.setCodec.addEventListener('change', async () => {
+    if (dom.setCodec.value === 'h265') {
+      const ok = await ScrcpyWebClient.isHevcSupported();
+      if (!ok) {
+        toast('Chrome trên máy này báo chưa hỗ trợ giải mã phần cứng H.265 — nếu bị màn hình đen hãy đổi lại H.264.', 'warn');
+      } else {
+        toast('Chromebook hỗ trợ giải mã phần cứng H.265! Bấm "Áp dụng cài đặt" để dùng.', 'ok');
+      }
+    }
+  });
 }
 
 if (dom.setTouchSwipe) {

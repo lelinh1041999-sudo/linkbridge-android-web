@@ -457,6 +457,17 @@
                     </label>
                     <input id="set-bitrate" type="range" min="2" max="24" step="1" value="8" />
                   </div>
+                  <div class="form-field full">
+                    <label class="form-label" for="set-codec">Chuẩn nén video (Codec)</label>
+                    <select id="set-codec" class="select-box">
+                      <option value="h264" selected>H.264 (Mặc định · Tương thích mọi máy)</option>
+                      <option value="h265">H.265 / HEVC (Nét hơn ~35% cùng băng thông)</option>
+                    </select>
+                    <p id="set-codec-hint" class="muted-note" style="margin: 6px 0 0; font-size: 11.5px; line-height: 1.45;">
+                      <strong>H.264:</strong> Nhẹ, ổn định nhất, chạy được trên mọi Chromebook.<br />
+                      <strong>H.265 (HEVC):</strong> Giữ chi tiết sắc nét hơn ~35% ở cùng mức Mbps (đỡ vỡ hạt khi xem video/game), nhưng đòi hỏi Chrome/GPU hỗ trợ giải mã H.265 — nếu thấy màn hình đen thì đổi lại H.264.
+                    </p>
+                  </div>
                 </div>
 
                 <label class="toggle-row">
