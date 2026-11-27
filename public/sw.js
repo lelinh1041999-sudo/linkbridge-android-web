@@ -1,4 +1,4 @@
-const CACHE_NAME = 'linhbridge-v39';
+const CACHE_NAME = 'linhbridge-v40';
 const PRECACHE = [
   './',
   './index.html',
@@ -9,6 +9,8 @@ const PRECACHE = [
   './js/audio-worklet.js',
   './js/webusb-driver.js',
   './manifest.webmanifest',
+  './icons/favicon-32.png',
+  './icons/icon-64.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
 ];
