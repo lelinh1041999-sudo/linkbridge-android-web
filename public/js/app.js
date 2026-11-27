@@ -83,6 +83,8 @@ const dom = {
   hwCoord: $('hw-coord'),
   hwFullscreen: $('hw-fullscreen'),
   stageArea: document.querySelector('.stage-area'),
+  phoneScreenWrap: document.querySelector('.phone-screen-wrap'),
+  btnRatioTop: $('btn-ratio-top'),
   btnFullscreenTop: $('btn-fullscreen-top'),
   fsHud: $('fs-hud'),
   fsHandle: $('fs-handle'),
@@ -95,6 +97,17 @@ const dom = {
   fsFitLabel: $('fs-fit-label'),
   fsOled: $('fs-oled'),
   fsExit: $('fs-exit'),
+  ratioPopover: $('ratio-popover'),
+  ratioPopTitle: $('ratio-pop-title'),
+  ratioPopClose: $('ratio-pop-close'),
+  ratioChips: $('ratio-chips'),
+  ratioZoom: $('ratio-zoom'),
+  ratioZoomVal: $('ratio-zoom-val'),
+  ratioSx: $('ratio-sx'),
+  ratioSxVal: $('ratio-sx-val'),
+  ratioSy: $('ratio-sy'),
+  ratioSyVal: $('ratio-sy-val'),
+  ratioReset: $('ratio-reset'),
 
   consoleOutput: $('console-output'),
   consoleForm: $('console-form'),
@@ -1253,11 +1266,19 @@ dom.hwCoord.addEventListener('click', () => {
 // Fullscreen Controller (Auto-fit Chromebook screen for Portrait & Landscape)
 // ==========================================================================
 
-const FS_MODES = ['fit', 'fill', 'stretch'];
+const FS_MODES = ['fit', 'fill', 'stretch', '16:9', '16:10', '4:3'];
 const FS_MODE_LABELS = {
-  fit: 'Vừa màn',
+  fit: 'Gốc',
   fill: 'Tràn viền',
-  stretch: 'Kéo kín 100%',
+  stretch: 'Kéo kín',
+  '16:9': '16:9',
+  '16:10': '16:10',
+  '4:3': '4:3',
+};
+const FIXED_RATIOS = {
+  '16:9': 16 / 9,
+  '16:10': 16 / 10,
+  '4:3': 4 / 3,
 };
 
 let fsHudHideTimer = null;
@@ -1272,15 +1293,77 @@ function getCurrentVideoSize(overrideW, overrideH) {
   return { w, h };
 }
 
-function getFsFitMode(isLandscape) {
-  const key = isLandscape ? 'linhbridge_fs_mode_land' : 'linhbridge_fs_mode_port';
-  const saved = localStorage.getItem(key);
-  return FS_MODES.includes(saved) ? saved : 'fit';
+function getDisplayConfig(isLandscape) {
+  const key = isLandscape ? 'linhbridge_display_cfg_land' : 'linhbridge_display_cfg_port';
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        mode: FS_MODES.includes(parsed.mode) ? parsed.mode : 'fit',
+        zoom: Math.max(100, Math.min(160, Number(parsed.zoom) || 100)),
+        scaleX: Math.max(60, Math.min(150, Number(parsed.scaleX) || 100)),
+        scaleY: Math.max(60, Math.min(150, Number(parsed.scaleY) || 100)),
+      };
+    }
+  } catch {}
+  // Fallback migration from older linhbridge_fs_mode_* key
+  const legacyKey = isLandscape ? 'linhbridge_fs_mode_land' : 'linhbridge_fs_mode_port';
+  const legacyMode = localStorage.getItem(legacyKey);
+  return {
+    mode: FS_MODES.includes(legacyMode) ? legacyMode : 'fit',
+    zoom: 100,
+    scaleX: 100,
+    scaleY: 100,
+  };
 }
 
-function setFsFitMode(isLandscape, mode) {
-  const key = isLandscape ? 'linhbridge_fs_mode_land' : 'linhbridge_fs_mode_port';
-  localStorage.setItem(key, mode);
+function saveDisplayConfig(isLandscape, cfg) {
+  const key = isLandscape ? 'linhbridge_display_cfg_land' : 'linhbridge_display_cfg_port';
+  localStorage.setItem(key, JSON.stringify({
+    mode: FS_MODES.includes(cfg.mode) ? cfg.mode : 'fit',
+    zoom: Math.max(100, Math.min(160, Math.round(Number(cfg.zoom) || 100))),
+    scaleX: Math.max(60, Math.min(150, Math.round(Number(cfg.scaleX) || 100))),
+    scaleY: Math.max(60, Math.min(150, Math.round(Number(cfg.scaleY) || 100))),
+  }));
+}
+
+function isCustomDisplayConfig(cfg) {
+  return cfg.mode !== 'fit' || cfg.zoom !== 100 || cfg.scaleX !== 100 || cfg.scaleY !== 100;
+}
+
+function syncRatioPopoverUi(isLandscape, cfg) {
+  if (!dom.ratioPopover) return;
+  if (dom.ratioPopTitle) {
+    dom.ratioPopTitle.textContent = `Tỉ lệ hiển thị (${isLandscape ? 'Xoay ngang' : 'Xoay dọc'})`;
+  }
+  dom.ratioChips?.querySelectorAll('.ratio-chip').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.ratioMode === cfg.mode);
+  });
+  if (dom.ratioZoom) dom.ratioZoom.value = String(cfg.zoom);
+  if (dom.ratioZoomVal) dom.ratioZoomVal.textContent = `${cfg.zoom}%`;
+  if (dom.ratioSx) dom.ratioSx.value = String(cfg.scaleX);
+  if (dom.ratioSxVal) dom.ratioSxVal.textContent = `${cfg.scaleX}%`;
+  if (dom.ratioSy) dom.ratioSy.value = String(cfg.scaleY);
+  if (dom.ratioSyVal) dom.ratioSyVal.textContent = `${cfg.scaleY}%`;
+  dom.btnRatioTop?.classList.toggle('is-active', isCustomDisplayConfig(cfg));
+}
+
+function toggleRatioPopover(forceOpen) {
+  if (!dom.ratioPopover) return;
+  const open = typeof forceOpen === 'boolean' ? forceOpen : !dom.ratioPopover.classList.contains('is-open');
+  dom.ratioPopover.classList.toggle('is-open', open);
+  if (open) {
+    const { w, h } = getCurrentVideoSize();
+    const isLandscape = w > h;
+    syncRatioPopoverUi(isLandscape, getDisplayConfig(isLandscape));
+    if (isFullscreenActive()) {
+      clearTimeout(fsHudHideTimer);
+      dom.fsHud?.classList.remove('is-hidden');
+    }
+  } else if (isFullscreenActive()) {
+    showFsHudTemporarily(2200);
+  }
 }
 
 // Track pointer type globally (capture phase) so touch vs mouse state is always accurate
@@ -1289,6 +1372,14 @@ window.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'touch') {
     dom.imeProxy.readOnly = true;
     if (document.activeElement === dom.imeProxy) dom.imeProxy.blur();
+  }
+  if (
+    dom.ratioPopover?.classList.contains('is-open') &&
+    !dom.ratioPopover.contains(e.target) &&
+    !dom.btnRatioTop?.contains(e.target) &&
+    !dom.fsFitMode?.contains(e.target)
+  ) {
+    toggleRatioPopover(false);
   }
 }, true);
 
@@ -1304,6 +1395,10 @@ function updateFullscreenLayout(overrideW, overrideH) {
   if (!active && !isLive) {
     dom.canvas.style.width = '';
     dom.canvas.style.height = '';
+    if (dom.phoneScreenWrap) {
+      dom.phoneScreenWrap.style.width = '';
+      dom.phoneScreenWrap.style.height = '';
+    }
     return;
   }
 
@@ -1313,46 +1408,70 @@ function updateFullscreenLayout(overrideW, overrideH) {
   if (!w || !h || !stageW || !stageH) return;
 
   const isLandscape = w > h;
-  let cssW;
-  let cssH;
+  const cfg = getDisplayConfig(isLandscape);
 
+  let boxW;
+  let boxH;
   if (active) {
-    const mode = getFsFitMode(isLandscape);
-    if (mode === 'stretch') {
-      cssW = stageW;
-      cssH = stageH;
-    } else if (mode === 'fill') {
-      const scale = Math.max(stageW / w, stageH / h);
-      cssW = Math.round(w * scale);
-      cssH = Math.round(h * scale);
-    } else {
-      // 'fit': largest crisp size fitting 100% of Chromebook viewport (both Portrait & Landscape)
-      const scale = Math.min(stageW / w, stageH / h);
-      cssW = Math.round(w * scale);
-      cssH = Math.round(h * scale);
-    }
-
-    if (dom.fsFitLabel) {
-      dom.fsFitLabel.textContent = `${FS_MODE_LABELS[mode]} (${isLandscape ? 'Ngang' : 'Dọc'})`;
-    }
-    if (dom.fsOled) {
-      dom.fsOled.classList.toggle('is-oled-off', !state.displayPowerOn);
-    }
+    boxW = stageW;
+    boxH = stageH;
   } else {
-    // Windowed / Folded Tablet mode: scale UP or DOWN so 720p/1080p always fills the stage cleanly
     const isPortraitCb = stageH > stageW;
     const hwRailReserve = isPortraitCb ? 56 : 74;
-    const bezelPad = isPortraitCb ? 24 : 52;
-    const hintReserve = isPortraitCb ? 14 : 46;
-    const availW = Math.max(220, stageW - hwRailReserve - bezelPad);
-    const availH = Math.max(220, stageH - bezelPad - hintReserve);
-    const scale = Math.min(availW / w, availH / h);
-    cssW = Math.round(w * scale);
-    cssH = Math.round(h * scale);
+    const bezelPad = isPortraitCb ? 24 : 44;
+    const hintReserve = isPortraitCb ? 14 : 42;
+    boxW = Math.max(220, stageW - hwRailReserve - bezelPad);
+    boxH = Math.max(220, stageH - bezelPad - hintReserve);
   }
+
+  let baseW;
+  let baseH;
+  if (cfg.mode === 'stretch') {
+    baseW = boxW;
+    baseH = boxH;
+  } else if (cfg.mode === 'fill') {
+    const scale = Math.max(boxW / w, boxH / h);
+    baseW = w * scale;
+    baseH = h * scale;
+  } else if (FIXED_RATIOS[cfg.mode]) {
+    const r = isLandscape ? FIXED_RATIOS[cfg.mode] : (1 / FIXED_RATIOS[cfg.mode]);
+    if (boxW / boxH > r) {
+      baseH = boxH;
+      baseW = boxH * r;
+    } else {
+      baseW = boxW;
+      baseH = boxW / r;
+    }
+  } else {
+    const scale = Math.min(boxW / w, boxH / h);
+    baseW = w * scale;
+    baseH = h * scale;
+  }
+
+  const cssW = Math.max(120, Math.round(baseW * (cfg.zoom / 100) * (cfg.scaleX / 100)));
+  const cssH = Math.max(120, Math.round(baseH * (cfg.zoom / 100) * (cfg.scaleY / 100)));
 
   dom.canvas.style.width = `${cssW}px`;
   dom.canvas.style.height = `${cssH}px`;
+
+  if (dom.phoneScreenWrap) {
+    if (active) {
+      dom.phoneScreenWrap.style.width = '';
+      dom.phoneScreenWrap.style.height = '';
+    } else {
+      dom.phoneScreenWrap.style.width = `${Math.min(boxW, cssW)}px`;
+      dom.phoneScreenWrap.style.height = `${Math.min(boxH, cssH)}px`;
+    }
+  }
+
+  const labelSuffix = cfg.zoom !== 100 ? ` ${cfg.zoom}%` : '';
+  if (dom.fsFitLabel) {
+    dom.fsFitLabel.textContent = `${FS_MODE_LABELS[cfg.mode] || 'Gốc'}${labelSuffix}`;
+  }
+  if (dom.fsOled) {
+    dom.fsOled.classList.toggle('is-oled-off', !state.displayPowerOn);
+  }
+  syncRatioPopoverUi(isLandscape, cfg);
 }
 
 function showFsHudTemporarily(ms = 2600) {
@@ -1360,8 +1479,9 @@ function showFsHudTemporarily(ms = 2600) {
   dom.fsHud.classList.remove('is-hidden');
   clearTimeout(fsHudHideTimer);
   fsHudHideTimer = setTimeout(() => {
+    const popoverOpen = dom.ratioPopover?.classList.contains('is-open');
     const hoveredWithMouse = lastPointerType !== 'touch' && dom.fsHud.matches(':hover');
-    if (isFullscreenActive() && !hoveredWithMouse) {
+    if (isFullscreenActive() && !hoveredWithMouse && !popoverOpen) {
       dom.fsHud.classList.add('is-hidden');
     }
   }, ms);
@@ -1380,6 +1500,45 @@ dom.hwFullscreen?.addEventListener('click', toggleFullscreen);
 dom.btnFullscreenTop?.addEventListener('click', toggleFullscreen);
 dom.fsExit?.addEventListener('click', () => document.exitFullscreen?.().catch(() => {}));
 
+dom.btnRatioTop?.addEventListener('click', () => toggleRatioPopover());
+dom.fsFitMode?.addEventListener('click', () => toggleRatioPopover());
+dom.ratioPopClose?.addEventListener('click', () => toggleRatioPopover(false));
+
+dom.ratioChips?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.ratio-chip');
+  if (!btn) return;
+  const mode = btn.dataset.ratioMode;
+  if (!FS_MODES.includes(mode)) return;
+  const { w, h } = getCurrentVideoSize();
+  const isLandscape = w > h;
+  const cfg = getDisplayConfig(isLandscape);
+  cfg.mode = mode;
+  saveDisplayConfig(isLandscape, cfg);
+  updateFullscreenLayout();
+});
+
+function bindRatioSlider(inputEl, prop) {
+  inputEl?.addEventListener('input', () => {
+    const { w, h } = getCurrentVideoSize();
+    const isLandscape = w > h;
+    const cfg = getDisplayConfig(isLandscape);
+    cfg[prop] = Number(inputEl.value);
+    saveDisplayConfig(isLandscape, cfg);
+    updateFullscreenLayout();
+  });
+}
+bindRatioSlider(dom.ratioZoom, 'zoom');
+bindRatioSlider(dom.ratioSx, 'scaleX');
+bindRatioSlider(dom.ratioSy, 'scaleY');
+
+dom.ratioReset?.addEventListener('click', () => {
+  const { w, h } = getCurrentVideoSize();
+  const isLandscape = w > h;
+  saveDisplayConfig(isLandscape, { mode: 'fit', zoom: 100, scaleX: 100, scaleY: 100 });
+  updateFullscreenLayout();
+  toast('Đã đặt lại tỉ lệ về mặc định (100%).', 'ok');
+});
+
 dom.fsBack?.addEventListener('click', () => dom.hwBack?.click());
 dom.fsHome?.addEventListener('click', () => dom.hwHome?.click());
 dom.fsRecents?.addEventListener('click', () => dom.hwRecents?.click());
@@ -1391,17 +1550,6 @@ dom.fsOled?.addEventListener('click', () => {
   dom.hwOled?.click();
   setTimeout(() => dom.fsOled?.classList.toggle('is-oled-off', !state.displayPowerOn), 120);
   showFsHudTemporarily(2500);
-});
-
-dom.fsFitMode?.addEventListener('click', () => {
-  const { w, h } = getCurrentVideoSize();
-  const isLandscape = w > h;
-  const current = getFsFitMode(isLandscape);
-  const next = FS_MODES[(FS_MODES.indexOf(current) + 1) % FS_MODES.length];
-  setFsFitMode(isLandscape, next);
-  updateFullscreenLayout();
-  toast(`Toàn màn hình (${isLandscape ? 'Xoay ngang' : 'Xoay dọc'}): ${FS_MODE_LABELS[next]}`, 'ok');
-  showFsHudTemporarily(2800);
 });
 
 document.addEventListener('fullscreenchange', () => {

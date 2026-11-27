@@ -122,6 +122,15 @@
           </svg>
         </button>
 
+        <button id="btn-ratio-top" class="btn" title="Tùy chỉnh tỉ lệ hiển thị & phóng to cắt viền đen">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+            <polyline points="7 9 4 12 7 15"></polyline>
+            <polyline points="17 9 20 12 17 15"></polyline>
+          </svg>
+          <span>Tỉ lệ</span>
+        </button>
+
         <button id="btn-fullscreen-top" class="btn btn-icon" title="Chiếu toàn màn hình khớp Chromebook (Alt+F)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 3 21 3 21 9"></polyline>
@@ -289,6 +298,46 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
             <span>Thoát</span>
           </button>
+        </div>
+
+        <!-- Floating Aspect Ratio & Zoom Popover (works in both Windowed & Fullscreen) -->
+        <div id="ratio-popover" class="ratio-popover" aria-label="Tùy chỉnh tỉ lệ hiển thị">
+          <div class="ratio-pop-head">
+            <strong id="ratio-pop-title">Tỉ lệ hiển thị (Xoay dọc)</strong>
+            <button id="ratio-pop-close" class="ratio-pop-close" type="button" title="Đóng">&times;</button>
+          </div>
+
+          <div class="ratio-chips" id="ratio-chips">
+            <button type="button" class="ratio-chip" data-ratio-mode="fit">Gốc</button>
+            <button type="button" class="ratio-chip" data-ratio-mode="fill">Tràn viền</button>
+            <button type="button" class="ratio-chip" data-ratio-mode="stretch">Kéo kín</button>
+            <button type="button" class="ratio-chip" data-ratio-mode="16:9">16:9</button>
+            <button type="button" class="ratio-chip" data-ratio-mode="16:10">16:10</button>
+            <button type="button" class="ratio-chip" data-ratio-mode="4:3">4:3</button>
+          </div>
+
+          <div class="ratio-sliders">
+            <label class="ratio-slider-row">
+              <span>Phóng to (cắt viền đen)</span>
+              <strong id="ratio-zoom-val">100%</strong>
+              <input id="ratio-zoom" type="range" min="100" max="160" step="1" value="100" />
+            </label>
+            <label class="ratio-slider-row">
+              <span>Độ rộng (ngang)</span>
+              <strong id="ratio-sx-val">100%</strong>
+              <input id="ratio-sx" type="range" min="60" max="150" step="1" value="100" />
+            </label>
+            <label class="ratio-slider-row">
+              <span>Độ cao (dọc)</span>
+              <strong id="ratio-sy-val">100%</strong>
+              <input id="ratio-sy" type="range" min="60" max="150" step="1" value="100" />
+            </label>
+          </div>
+
+          <div class="ratio-pop-foot">
+            <span class="ratio-pop-hint">Tự lưu riêng cho ngang &amp; dọc</span>
+            <button id="ratio-reset" class="btn btn-sm" type="button">Đặt lại</button>
+          </div>
         </div>
       </section>
 
