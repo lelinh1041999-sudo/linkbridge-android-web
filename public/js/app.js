@@ -1147,16 +1147,32 @@ async function handlePhoneKeyDown(e) {
     return;
   }
 
-  // Ctrl+V -> pull Chromebook clipboard and paste into Samsung S26
+  // Ctrl+V -> pull computer clipboard (image -> push to S26 Gallery/Download; text -> paste into S26)
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyV') {
     e.preventDefault();
     resetImeBuffer();
+    try {
+      if (navigator.clipboard?.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imgType = item.types.find((t) => t.startsWith('image/'));
+          if (imgType) {
+            const blob = await item.getType(imgType);
+            const ext = imgType.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const imgFile = new File([blob], `paste-${stamp}.${ext}`, { type: imgType });
+            await uploadFilesToPhone([imgFile]);
+            return;
+          }
+        }
+      }
+    } catch {}
     try {
       const clipText = await navigator.clipboard.readText();
       if (clipText) {
         if (state.demoMode) demo.appendText(clipText);
         else client.sendJson({ type: 'clipboard', text: clipText, paste: true });
-        toast('Đã dán từ Clipboard máy tính', 'ok');
+        toast('Đã dán chữ từ Clipboard máy tính', 'ok');
       }
     } catch {
       sendKeycode(KEY_ACTION.DOWN, 50, 0x1000);
@@ -3293,9 +3309,24 @@ function formatBytesShort(bytes) {
 async function uploadFilesToPhone(fileList) {
   const files = Array.from(fileList || []);
   if (files.length === 0) return;
+
+  if (state.mode === 'webusb' && state.webUsbDriver) {
+    for (const file of files) {
+      toast(`Đang gửi "${file.name}" (${formatBytesShort(file.size)}) qua USB sang S26...`, 'ok');
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const data = await state.webUsbDriver.pushFile(file.name, bytes);
+        toast(`Đã gửi "${data.name}" vào /Download (hiện ngay trong Bộ sưu tập)!`, 'ok');
+      } catch (err) {
+        toast(`Lỗi gửi "${file.name}" qua USB: ${err.message}`, 'err');
+      }
+    }
+    return;
+  }
+
   const serial = state.selectedSerial || dom.deviceSelect?.value;
-  if (!serial || state.mode === 'webusb') {
-    toast('Cần kết nối S26 qua Wi-Fi Bridge (localhost:3000) để gửi file.', 'warn');
+  if (!serial) {
+    toast('Hãy kết nối điện thoại (USB trực tiếp hoặc Wi-Fi Bridge) trước khi gửi file.', 'warn');
     return;
   }
 
@@ -3313,7 +3344,7 @@ async function uploadFilesToPhone(fileList) {
       } else if (data.installed) {
         toast(`Đã cài đặt APK "${data.name}" lên S26 thành công!`, 'ok');
       } else {
-        toast(`Đã gửi "${data.name}" vào /Download trên S26!`, 'ok');
+        toast(`Đã gửi "${data.name}" vào /Download (hiện ngay trong Bộ sưu tập)!`, 'ok');
       }
     } catch (err) {
       toast(`Lỗi gửi "${file.name}": ${err.message}`, 'err');
@@ -3321,6 +3352,32 @@ async function uploadFilesToPhone(fileList) {
   }
   if (activePhoneDir === 'downloads') loadPhoneFiles('downloads');
 }
+
+// Also support standard browser paste event with image/file when not typing in web UI inputs
+window.addEventListener('paste', (e) => {
+  if (!state.connected) return;
+  if (isTypingInWebUi()) return;
+  const items = Array.from(e.clipboardData?.items || []);
+  const files = [];
+  for (const it of items) {
+    if (it.kind === 'file') {
+      const f = it.getAsFile();
+      if (f) {
+        if (!f.name || f.name === 'image.png') {
+          const ext = (f.type?.split('/')[1] || 'png').replace('jpeg', 'jpg');
+          const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          files.push(new File([f], `paste-${stamp}.${ext}`, { type: f.type || 'image/png' }));
+        } else {
+          files.push(f);
+        }
+      }
+    }
+  }
+  if (files.length > 0) {
+    e.preventDefault();
+    uploadFilesToPhone(files);
+  }
+});
 
 if (dom.stageArea && dropOverlay) {
   dom.stageArea.addEventListener('dragenter', (e) => {

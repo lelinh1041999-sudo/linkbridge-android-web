@@ -692,6 +692,37 @@ export class WebUsbScrcpyDriver {
     return new Blob(chunks, { type: 'image/png' });
   }
 
+  async pushFile(name, bytes) {
+    if (!this.adb) throw new Error('Chưa kết nối WebUSB.');
+    const safeName = String(name || `file-${Date.now()}.bin`)
+      .replace(/[\x00-\x1f/\\:*?"<>|]/g, '_')
+      .trim() || `file-${Date.now()}.bin`;
+    const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    const remotePath = `/sdcard/Download/${safeName}`;
+
+    const sync = await this.adb.sync();
+    try {
+      const stream = new ReadableStream({
+        start(controller) {
+          const CHUNK = 65536;
+          for (let off = 0; off < data.byteLength; off += CHUNK) {
+            controller.enqueue(data.subarray(off, Math.min(off + CHUNK, data.byteLength)));
+          }
+          controller.close();
+        },
+      });
+      await sync.write({ filename: remotePath, file: stream, permission: 0o644 });
+    } finally {
+      await sync.dispose();
+    }
+
+    // Trigger Android MediaStore scan so pasted/dropped photos appear immediately in Gallery / Zalo / Messenger
+    const escapedPath = remotePath.replace(/"/g, '\\"');
+    this.runShell(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file://${escapedPath}"`).catch(() => {});
+
+    return { ok: true, name: safeName, remotePath, size: data.byteLength, installed: false };
+  }
+
   async stopStreamOnly() {
     if (this.statsTimer) {
       clearInterval(this.statsTimer);
