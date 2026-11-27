@@ -244,6 +244,7 @@ class ScrcpySession extends EventEmitter {
         'control=true',
         `video_codec=${this.options.videoCodec}`,
         'audio_codec=opus',
+        'audio_bit_rate=256000',
         `max_size=${this.options.newDisplay ? 0 : this.options.maxSize}`,
         `video_bit_rate=${this.options.bitRate}`,
         `max_fps=${this.options.maxFps}`,

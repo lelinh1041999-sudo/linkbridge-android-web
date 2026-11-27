@@ -440,6 +440,7 @@ export class WebUsbScrcpyDriver {
       'control=true',
       `video_codec=${opts.videoCodec}`,
       'audio_codec=opus',
+      'audio_bit_rate=256000',
       `max_size=${opts.newDisplay ? 0 : opts.maxSize}`,
       `video_bit_rate=${opts.bitRate}`,
       `max_fps=${opts.maxFps}`,
