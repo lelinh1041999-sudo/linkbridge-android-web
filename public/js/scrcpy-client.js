@@ -479,17 +479,25 @@ export class ScrcpyWebClient {
     if (!this.audioCtx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
-      this.audioCtx = new AC({ sampleRate: 48000, latencyHint: 'interactive' });
+      this.audioCtx = new AC({ sampleRate: 48000, latencyHint: 'playback' });
       await this.audioCtx.audioWorklet.addModule('./js/audio-worklet.js');
       this.audioWorkletNode = new AudioWorkletNode(this.audioCtx, 'low-latency-pcm', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
         outputChannelCount: [2],
       });
-      this.audioWorkletNode.connect(this.audioCtx.destination);
+      // Transparent safety limiter prevents digital clipping crackles on loud/bass-boosted Opus music
+      const limiter = this.audioCtx.createDynamicsCompressor();
+      limiter.threshold.value = -1.5;
+      limiter.knee.value = 3;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.08;
+      this.audioWorkletNode.connect(limiter);
+      limiter.connect(this.audioCtx.destination);
       try {
         this.audioRecordDest = this.audioCtx.createMediaStreamDestination();
-        this.audioWorkletNode.connect(this.audioRecordDest);
+        limiter.connect(this.audioRecordDest);
       } catch {
         this.audioRecordDest = null;
       }

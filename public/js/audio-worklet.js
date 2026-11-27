@@ -10,9 +10,9 @@
  * - Short fade-in / fade-out on start/underrun to avoid pops.
  */
 const SR = 48000;
-const MIN_TARGET = Math.round(SR * 0.06);   // 60ms
-const MAX_TARGET = Math.round(SR * 0.30);   // 300ms
-const START_TARGET = Math.round(SR * 0.10); // 100ms
+const MIN_TARGET = Math.round(SR * 0.08);   // 80ms
+const MAX_TARGET = Math.round(SR * 0.32);   // 320ms
+const START_TARGET = Math.round(SR * 0.12); // 120ms
 const FADE_LEN = 96;
 
 class LowLatencyPcmProcessor extends AudioWorkletProcessor {
