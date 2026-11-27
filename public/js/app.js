@@ -379,6 +379,10 @@ const client = new ScrcpyWebClient(dom.canvas, {
   },
 
   onClipboard(text) {
+    // Ignore clipboard echo caused by our own Vietnamese/Unicode IME typing injection
+    if (text && text === lastImeClipText && Date.now() - lastImeClipAt < 2500) {
+      return;
+    }
     dom.clipPhoneBox.value = text;
     if (text) {
       toast('Đã nhận Clipboard từ điện thoại', 'ok');
@@ -994,6 +998,8 @@ dom.canvas.addEventListener(
 
 let isComposingIme = false;
 let lastImeValue = '';
+let lastImeClipText = '';
+let lastImeClipAt = 0;
 
 function isTypingInWebUi(el = document.activeElement) {
   if (!el || el === dom.imeProxy) return false;
@@ -1024,6 +1030,8 @@ function sendTypedText(text) {
   if (/^[\x20-\x7e]+$/.test(text)) {
     client.sendBinary(encodeInjectText(text));
   } else {
+    lastImeClipText = text;
+    lastImeClipAt = Date.now();
     client.sendJson({ type: 'clipboard', text, paste: true });
   }
 }
