@@ -1784,6 +1784,33 @@ dialog.modal::backdrop {
   transform: translateX(-50%);
 }
 
+/* Keep all topbar buttons (Gọn, DeX, Tỉ lệ, Fullscreen) visible on 1280–1440px Chromebooks */
+@media (max-width: 1480px) {
+  .topbar {
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .topbar-left,
+  .topbar-right {
+    gap: 5px;
+  }
+  .brand-sub,
+  .topbar-center .telemetry-strip {
+    display: none;
+  }
+  .brand-name {
+    font-size: 13px;
+  }
+  .topbar .btn {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  .device-picker select {
+    max-width: 150px;
+  }
+}
+
+
 
 
 
