@@ -264,6 +264,9 @@
             <button id="hw-screenshot" class="hw-btn" title="Chụp ảnh màn hình (tải PNG)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
             </button>
+            <button id="hw-record-video" class="hw-btn" title="Quay video màn hình S26 (kèm âm thanh, lưu về Chromebook)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3.2" fill="currentColor"></circle></svg>
+            </button>
             <button id="hw-coord" class="hw-btn" title="Bật/tắt thước đo tọa độ (x, y) để viết lệnh">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>
             </button>
@@ -362,6 +365,15 @@
             <button id="ratio-reset" class="btn btn-sm" type="button">Đặt lại</button>
           </div>
         </div>
+
+        <!-- Drag & Drop Upload Overlay -->
+        <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+          <div class="drop-overlay-card">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <strong>Thả file để gửi sang Samsung S26</strong>
+            <span>Lưu vào /sdcard/Download (thả .APK sẽ tự cài đặt)</span>
+          </div>
+        </div>
       </section>
 
       <!-- Right Utility Drawer -->
@@ -369,7 +381,7 @@
         <nav class="drawer-tabs" role="tablist">
           <button class="tab-btn active" data-tab="console" role="tab" aria-selected="true">Lệnh</button>
           <button class="tab-btn" data-tab="apps" role="tab" aria-selected="false">Ứng dụng</button>
-          <button class="tab-btn" data-tab="clipboard" role="tab" aria-selected="false">Clipboard</button>
+          <button class="tab-btn" data-tab="clipboard" role="tab" aria-selected="false">File &amp; Clip</button>
           <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">Cài đặt</button>
         </nav>
 
@@ -443,6 +455,26 @@
                   <button id="btn-copy-from-phone" class="btn btn-sm">Chép sang Chromebook</button>
                 </h3>
                 <textarea id="clip-phone-box" class="textarea-field" readonly placeholder="Khi bạn bấm Sao chép (Copy) trên điện thoại, nội dung sẽ tự hiện ở đây..."></textarea>
+              </div>
+
+              <div class="section-card">
+                <h3 class="section-title">
+                  <span>Truyền File &amp; Ảnh (S26 ↔ Chromebook)</span>
+                  <button id="btn-file-upload" class="btn btn-sm btn-primary" type="button">Gửi file lên S26</button>
+                  <input id="file-upload-input" type="file" multiple style="display:none;" />
+                </h3>
+                <p class="section-desc">
+                  Có thể <strong>kéo-thả file trực tiếp</strong> vào màn hình điện thoại để gửi vào <code>/Download</code> (file <code>.apk</code> tự cài).
+                </p>
+                <div class="file-dir-tabs" id="file-dir-tabs">
+                  <button type="button" class="btn btn-sm is-active" data-phone-dir="camera">Ảnh chụp</button>
+                  <button type="button" class="btn btn-sm" data-phone-dir="screenshots">Ảnh MH</button>
+                  <button type="button" class="btn btn-sm" data-phone-dir="downloads">Download</button>
+                  <button type="button" class="btn btn-sm" id="btn-reload-files" title="Tải lại danh sách">↻</button>
+                </div>
+                <div id="phone-files-list" class="phone-files-list">
+                  <div class="muted-note" style="font-size:12px;">Bấm chọn thư mục hoặc ↻ để xem ảnh/file mới nhất trên S26.</div>
+                </div>
               </div>
             </div>
           </div>

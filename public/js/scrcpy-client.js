@@ -16,6 +16,7 @@ export const KEY_ACTION = {
   UP: 1,
 };
 
+export const POINTER_ID_MOUSE = -1n;
 export const POINTER_ID_FINGER = -2n;
 export const POINTER_ID_PINCH_2 = 1002n;
 
@@ -475,6 +476,12 @@ export class ScrcpyWebClient {
         outputChannelCount: [2],
       });
       this.audioWorkletNode.connect(this.audioCtx.destination);
+      try {
+        this.audioRecordDest = this.audioCtx.createMediaStreamDestination();
+        this.audioWorkletNode.connect(this.audioRecordDest);
+      } catch {
+        this.audioRecordDest = null;
+      }
       this.audioWorkletNode.port.postMessage({ type: 'mute', muted: this.audioMuted });
       this.audioReady = true;
     }
@@ -482,6 +489,11 @@ export class ScrcpyWebClient {
       try { await this.audioCtx.resume(); } catch {}
     }
     return this.audioReady;
+  }
+
+  getAudioStream() {
+    if (!this.audioEnabled || this.audioMuted || !this.audioRecordDest) return null;
+    return this.audioRecordDest.stream;
   }
 
   setAudioMuted(muted) {

@@ -1,6 +1,8 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
 const http = require('http');
 const path = require('path');
 const express = require('express');
@@ -18,7 +20,7 @@ const app = express();
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-File-Name');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
@@ -283,6 +285,130 @@ app.get('/api/device/:serial/screenshot', async (req, res) => {
     res.setHeader('Content-Disposition', `inline; filename="screenshot-${Date.now()}.png"`);
     res.send(png);
   } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- 2-Way File Transfer (Chromebook <-> Android S26) ----
+const SAFE_PHONE_DIRS = {
+  camera: '/sdcard/DCIM/Camera',
+  screenshots: '/sdcard/DCIM/Screenshots',
+  downloads: '/sdcard/Download',
+};
+
+function sanitizeFileName(rawName) {
+  let decoded = String(rawName || 'file.bin');
+  try { decoded = decodeURIComponent(decoded); } catch {}
+  const base = path.basename(decoded).replace(/[\x00-\x1f/\\:*?"<>|]/g, '_').trim();
+  return base || `file-${Date.now()}.bin`;
+}
+
+app.post('/api/device/:serial/push', async (req, res) => {
+  const { serial } = req.params;
+  const safeName = sanitizeFileName(req.headers['x-file-name'] || req.query.name);
+  const tmpFile = path.join(os.tmpdir(), `lb-up-${crypto.randomBytes(6).toString('hex')}-${safeName}`);
+  const MAX_BYTES = 250 * 1024 * 1024;
+  let totalBytes = 0;
+
+  try {
+    await new Promise((resolve, reject) => {
+      const wsFile = fs.createWriteStream(tmpFile);
+      let aborted = false;
+      req.on('data', (chunk) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_BYTES && !aborted) {
+          aborted = true;
+          wsFile.destroy();
+          reject(new Error('File quá lớn (tối đa 250 MB).'));
+        }
+      });
+      req.on('error', (err) => { wsFile.destroy(); reject(err); });
+      wsFile.on('error', reject);
+      wsFile.on('finish', resolve);
+      req.pipe(wsFile);
+    });
+
+    const isApk = safeName.toLowerCase().endsWith('.apk') && req.query.install !== '0';
+    if (isApk) {
+      const inst = await adb.execAdb(['-s', serial, 'install', '-r', tmpFile], { timeout: 120000 });
+      if (!inst.ok) {
+        return res.status(500).json({ ok: false, error: `Cài APK thất bại: ${inst.stderr || inst.stdout}` });
+      }
+      return res.json({ ok: true, installed: true, name: safeName, size: totalBytes });
+    }
+
+    const remotePath = `/sdcard/Download/${safeName}`;
+    const pushed = await adb.execAdb(['-s', serial, 'push', tmpFile, remotePath], { timeout: 120000 });
+    if (!pushed.ok) {
+      return res.status(500).json({ ok: false, error: `Gửi file thất bại: ${pushed.stderr || pushed.stdout}` });
+    }
+    // Notify Android MediaStore so photos/videos appear immediately in Gallery
+    adb.execAdb([
+      '-s', serial, 'shell', 'am', 'broadcast',
+      '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+      '-d', `file://${remotePath}`,
+    ], { timeout: 4000 }).catch(() => {});
+
+    res.json({ ok: true, installed: false, name: safeName, remotePath, size: totalBytes });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  } finally {
+    fs.promises.unlink(tmpFile).catch(() => {});
+  }
+});
+
+app.get('/api/device/:serial/files', async (req, res) => {
+  const { serial } = req.params;
+  const key = String(req.query.dir || 'camera').toLowerCase();
+  const dir = SAFE_PHONE_DIRS[key] || SAFE_PHONE_DIRS.camera;
+  try {
+    // List up to 40 newest regular files with mtime and byte size
+    const cmd = `cd "${dir}" 2>/dev/null && ls -1t 2>/dev/null | head -n 45 | while IFS= read -r f; do [ -f "$f" ] && stat -c '%Y|%s|%n' "$f" 2>/dev/null; done`;
+    const out = await adb.execAdb(['-s', serial, 'shell', cmd], { timeout: 8000 });
+    const files = [];
+    for (const line of (out.stdout || '').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const firstBar = trimmed.indexOf('|');
+      const secondBar = trimmed.indexOf('|', firstBar + 1);
+      if (firstBar < 0 || secondBar < 0) continue;
+      const mtime = Number(trimmed.slice(0, firstBar)) || 0;
+      const size = Number(trimmed.slice(firstBar + 1, secondBar)) || 0;
+      const name = trimmed.slice(secondBar + 1);
+      if (!name || name.startsWith('.')) continue;
+      files.push({ name, path: `${dir}/${name}`, size, mtime });
+    }
+    res.json({ ok: true, dir: key, remoteDir: dir, files: files.slice(0, 40) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message, files: [] });
+  }
+});
+
+app.get('/api/device/:serial/pull', async (req, res) => {
+  const { serial } = req.params;
+  const remotePath = String(req.query.path || '').trim();
+  if (!remotePath.startsWith('/sdcard/') || remotePath.includes('..') || remotePath.includes('\0')) {
+    return res.status(400).json({ ok: false, error: 'Đường dẫn file không hợp lệ.' });
+  }
+  const safeName = sanitizeFileName(path.basename(remotePath));
+  const tmpFile = path.join(os.tmpdir(), `lb-dl-${crypto.randomBytes(6).toString('hex')}-${safeName}`);
+  try {
+    const pulled = await adb.execAdb(['-s', serial, 'pull', remotePath, tmpFile], { timeout: 120000 });
+    if (!pulled.ok || !fs.existsSync(tmpFile)) {
+      return res.status(404).json({ ok: false, error: `Không tải được file: ${pulled.stderr || pulled.stdout}` });
+    }
+    const stat = fs.statSync(tmpFile);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', String(stat.size));
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+    const rs = fs.createReadStream(tmpFile);
+    const cleanup = () => fs.promises.unlink(tmpFile).catch(() => {});
+    rs.on('close', cleanup);
+    rs.on('error', cleanup);
+    res.on('close', cleanup);
+    rs.pipe(res);
+  } catch (err) {
+    fs.promises.unlink(tmpFile).catch(() => {});
     res.status(500).json({ ok: false, error: err.message });
   }
 });

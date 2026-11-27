@@ -2,6 +2,7 @@ import {
   ScrcpyWebClient,
   MOTION_ACTION,
   KEY_ACTION,
+  POINTER_ID_MOUSE,
   POINTER_ID_FINGER,
   POINTER_ID_PINCH_2,
   encodeTouchEvent,
@@ -758,7 +759,41 @@ dom.canvas.addEventListener('pointerdown', (e) => {
   dom.imeProxy.focus({ preventScroll: true });
 
   if (e.button === 1) return triggerHardwareKey('HOME');
-  if (e.button === 2 && state.options.rightClickBack) return triggerHardwareKey('BACK');
+  if (e.button === 2) {
+    // In DeX mode (or when rightClickBack is OFF), send a real Android right-click!
+    if (state.options.newDisplay || !state.options.rightClickBack) {
+      const rpt = getPhoneCoords(e);
+      if (rpt && state.connected) {
+        client.sendBinary(encodeTouchEvent({
+          action: MOTION_ACTION.DOWN,
+          pointerId: POINTER_ID_MOUSE,
+          x: rpt.x,
+          y: rpt.y,
+          screenWidth: rpt.w,
+          screenHeight: rpt.h,
+          pressure: 1.0,
+          actionButton: 2,
+          buttons: 2,
+        }));
+        setTimeout(() => {
+          if (!state.connected) return;
+          client.sendBinary(encodeTouchEvent({
+            action: MOTION_ACTION.UP,
+            pointerId: POINTER_ID_MOUSE,
+            x: rpt.x,
+            y: rpt.y,
+            screenWidth: rpt.w,
+            screenHeight: rpt.h,
+            pressure: 0.0,
+            actionButton: 2,
+            buttons: 0,
+          }));
+        }, 25);
+      }
+      return;
+    }
+    return triggerHardwareKey('BACK');
+  }
   if (e.button !== 0) return;
 
   const pt = getPhoneCoords(e);
@@ -3132,6 +3167,260 @@ $('btn-ai-copy').addEventListener('click', async () => {
     aiBridge.setFeedback(true, info);
   }
 });
+
+// ==========================================================================
+// Screen Video Recorder (Canvas Video + Phone Audio -> WebM Download)
+// ==========================================================================
+
+const hwRecordVideo = $('hw-record-video');
+let screenRecorder = null;
+let screenRecordChunks = [];
+let screenRecordTimer = null;
+let screenRecordStartedAt = 0;
+
+function formatRecTime(sec) {
+  const m = String(Math.floor(sec / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function stopScreenRecording() {
+  if (screenRecordTimer) {
+    clearInterval(screenRecordTimer);
+    screenRecordTimer = null;
+  }
+  hwRecordVideo?.classList.remove('is-recording');
+  if (dom.recBadge && !state.recordingMacro) {
+    dom.recBadge.classList.remove('visible');
+    dom.recBadge.textContent = '● ĐANG GHI MACRO';
+  }
+  if (screenRecorder && screenRecorder.state !== 'inactive') {
+    try { screenRecorder.stop(); } catch {}
+  }
+}
+
+async function toggleScreenRecording() {
+  if (screenRecorder && screenRecorder.state !== 'inactive') {
+    stopScreenRecording();
+    return;
+  }
+  if (!state.connected && !state.demoMode) {
+    toast('Hãy kết nối điện thoại trước khi quay video.', 'warn');
+    return;
+  }
+  if (typeof MediaRecorder === 'undefined' || typeof dom.canvas?.captureStream !== 'function') {
+    toast('Trình duyệt không hỗ trợ quay video màn hình.', 'err');
+    return;
+  }
+
+  try {
+    if (state.connected && !state.audioMuted) {
+      await client.ensureAudioContext();
+    }
+    const videoStream = dom.canvas.captureStream(30);
+    const tracks = [...videoStream.getVideoTracks()];
+    const audioStream = client.getAudioStream?.();
+    if (audioStream) {
+      tracks.push(...audioStream.getAudioTracks());
+    }
+    const combined = new MediaStream(tracks);
+    const mimeCandidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ];
+    const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+    screenRecordChunks = [];
+    screenRecorder = new MediaRecorder(combined, mimeType ? { mimeType, videoBitsPerSecond: 6_000_000 } : undefined);
+
+    screenRecorder.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) screenRecordChunks.push(ev.data);
+    };
+    screenRecorder.onstop = () => {
+      videoStream.getTracks().forEach((t) => t.stop());
+      if (screenRecordChunks.length > 0) {
+        const blob = new Blob(screenRecordChunks, { type: mimeType || 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        a.href = url;
+        a.download = `LinhBridge-S26-${stamp}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        toast(`Đã lưu video quay màn hình (${(blob.size / (1024 * 1024)).toFixed(1)} MB)!`, 'ok');
+      }
+      screenRecordChunks = [];
+      screenRecorder = null;
+    };
+
+    screenRecorder.start(500);
+    screenRecordStartedAt = Date.now();
+    hwRecordVideo?.classList.add('is-recording');
+    if (dom.recBadge) {
+      dom.recBadge.textContent = '● QUAY 00:00';
+      dom.recBadge.classList.add('visible');
+    }
+    screenRecordTimer = setInterval(() => {
+      const sec = Math.floor((Date.now() - screenRecordStartedAt) / 1000);
+      if (dom.recBadge) dom.recBadge.textContent = `● QUAY ${formatRecTime(sec)}`;
+    }, 500);
+    toast(audioStream ? 'Đang quay video màn hình S26 (có âm thanh)...' : 'Đang quay video màn hình S26...', 'ok');
+  } catch (err) {
+    toast(`Không thể quay video: ${err.message}`, 'err');
+    stopScreenRecording();
+  }
+}
+
+hwRecordVideo?.addEventListener('click', toggleScreenRecording);
+
+// ==========================================================================
+// 2-Way File Transfer: Drag & Drop Upload (Chromebook -> S26) + Pull (S26 -> Chromebook)
+// ==========================================================================
+
+const dropOverlay = $('drop-overlay');
+const btnFileUpload = $('btn-file-upload');
+const fileUploadInput = $('file-upload-input');
+const fileDirTabs = $('file-dir-tabs');
+const btnReloadFiles = $('btn-reload-files');
+const phoneFilesList = $('phone-files-list');
+let activePhoneDir = 'camera';
+let dragDepth = 0;
+
+function formatBytesShort(bytes) {
+  if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function uploadFilesToPhone(fileList) {
+  const files = Array.from(fileList || []);
+  if (files.length === 0) return;
+  const serial = state.selectedSerial || dom.deviceSelect?.value;
+  if (!serial || state.mode === 'webusb') {
+    toast('Cần kết nối S26 qua Wi-Fi Bridge (localhost:3000) để gửi file.', 'warn');
+    return;
+  }
+
+  for (const file of files) {
+    toast(`Đang gửi "${file.name}" (${formatBytesShort(file.size)}) sang S26...`, 'ok');
+    try {
+      const res = await fetch(apiUrl(`/api/device/${encodeURIComponent(serial)}/push`), {
+        method: 'POST',
+        headers: { 'X-File-Name': encodeURIComponent(file.name) },
+        body: file,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        toast(data.error || `Gửi "${file.name}" thất bại.`, 'err');
+      } else if (data.installed) {
+        toast(`Đã cài đặt APK "${data.name}" lên S26 thành công!`, 'ok');
+      } else {
+        toast(`Đã gửi "${data.name}" vào /Download trên S26!`, 'ok');
+      }
+    } catch (err) {
+      toast(`Lỗi gửi "${file.name}": ${err.message}`, 'err');
+    }
+  }
+  if (activePhoneDir === 'downloads') loadPhoneFiles('downloads');
+}
+
+if (dom.stageArea && dropOverlay) {
+  dom.stageArea.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+    dragDepth += 1;
+    dropOverlay.classList.add('is-visible');
+  });
+  dom.stageArea.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  dom.stageArea.addEventListener('dragleave', (e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dropOverlay.classList.remove('is-visible');
+  });
+  dom.stageArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    dropOverlay.classList.remove('is-visible');
+    if (e.dataTransfer?.files?.length) {
+      uploadFilesToPhone(e.dataTransfer.files);
+    }
+  });
+}
+
+btnFileUpload?.addEventListener('click', () => fileUploadInput?.click());
+fileUploadInput?.addEventListener('change', () => {
+  if (fileUploadInput.files?.length) {
+    uploadFilesToPhone(fileUploadInput.files);
+    fileUploadInput.value = '';
+  }
+});
+
+async function loadPhoneFiles(dir = activePhoneDir) {
+  activePhoneDir = dir;
+  fileDirTabs?.querySelectorAll('[data-phone-dir]').forEach((b) => {
+    b.classList.toggle('is-active', b.dataset.phoneDir === dir);
+  });
+  if (!phoneFilesList) return;
+  const serial = state.selectedSerial || dom.deviceSelect?.value;
+  if (!serial || state.mode === 'webusb') {
+    phoneFilesList.innerHTML = '<div class="muted-note" style="font-size:12px;">Cần kết nối S26 qua Wi-Fi Bridge để duyệt file.</div>';
+    return;
+  }
+  phoneFilesList.innerHTML = '<div class="muted-note" style="font-size:12px;">Đang tải danh sách từ S26...</div>';
+  try {
+    const res = await fetch(apiUrl(`/api/device/${encodeURIComponent(serial)}/files?dir=${encodeURIComponent(dir)}`));
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      phoneFilesList.innerHTML = `<div class="muted-note" style="font-size:12px;">${data.error || 'Không đọc được thư mục.'}</div>`;
+      return;
+    }
+    if (!data.files || data.files.length === 0) {
+      phoneFilesList.innerHTML = '<div class="muted-note" style="font-size:12px;">Thư mục này chưa có file nào.</div>';
+      return;
+    }
+    phoneFilesList.innerHTML = '';
+    for (const f of data.files) {
+      const row = document.createElement('div');
+      row.className = 'phone-file-row';
+      const meta = document.createElement('div');
+      meta.className = 'phone-file-meta';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'phone-file-name';
+      nameEl.textContent = f.name;
+      nameEl.title = f.name;
+      const subEl = document.createElement('span');
+      subEl.className = 'phone-file-sub';
+      const dt = f.mtime ? new Date(f.mtime * 1000).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '';
+      subEl.textContent = `${formatBytesShort(f.size)}${dt ? ' · ' + dt : ''}`;
+      meta.appendChild(nameEl);
+      meta.appendChild(subEl);
+
+      const dlBtn = document.createElement('a');
+      dlBtn.className = 'btn btn-sm';
+      dlBtn.textContent = 'Tải về';
+      dlBtn.href = apiUrl(`/api/device/${encodeURIComponent(serial)}/pull?path=${encodeURIComponent(f.path)}`);
+      dlBtn.download = f.name;
+
+      row.appendChild(meta);
+      row.appendChild(dlBtn);
+      phoneFilesList.appendChild(row);
+    }
+  } catch (err) {
+    phoneFilesList.innerHTML = `<div class="muted-note" style="font-size:12px;">Lỗi: ${err.message}</div>`;
+  }
+}
+
+fileDirTabs?.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-phone-dir]');
+  if (btn) loadPhoneFiles(btn.dataset.phoneDir);
+});
+btnReloadFiles?.addEventListener('click', () => loadPhoneFiles(activePhoneDir));
 
 // ==========================================================================
 // Boot
