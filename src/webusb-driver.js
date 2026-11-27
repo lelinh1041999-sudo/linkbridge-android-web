@@ -438,7 +438,7 @@ export class WebUsbScrcpyDriver {
       'tunnel_forward=true',
       'video=true',
       `audio=${opts.audio ? 'true' : 'false'}`,
-      ...(opts.audio && opts.audioDup ? ['audio_dup=true'] : []),
+      ...(opts.audio && opts.audioDup ? ['audio_source=playback', 'audio_dup=true'] : []),
       'control=true',
       `video_codec=${opts.videoCodec}`,
       'audio_codec=opus',

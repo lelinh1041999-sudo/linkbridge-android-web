@@ -242,7 +242,7 @@ class ScrcpySession extends EventEmitter {
         'tunnel_forward=true',
         'video=true',
         `audio=${this.options.audio ? 'true' : 'false'}`,
-        ...(this.options.audio && this.options.audioDup ? ['audio_dup=true'] : []),
+        ...(this.options.audio && this.options.audioDup ? ['audio_source=playback', 'audio_dup=true'] : []),
         'control=true',
         `video_codec=${this.options.videoCodec}`,
         'audio_codec=opus',
