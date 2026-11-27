@@ -170,7 +170,9 @@ const PRESETS = {
   ultra120: { maxSize: 1080, maxFps: 120, bitRate: 12_000_000 },
   balanced60: { maxSize: 1080, maxFps: 60, bitRate: 8_000_000 },
   lowlat720: { maxSize: 720, maxFps: 60, bitRate: 5_000_000 },
-  sharp1440: { maxSize: 1440, maxFps: 60, bitRate: 14_000_000 },
+  sharp1440: { maxSize: 1440, maxFps: 60, bitRate: 10_000_000 },
+  sharp1920: { maxSize: 1920, maxFps: 60, bitRate: 12_000_000 },
+  nativeMax: { maxSize: 0, maxFps: 60, bitRate: 16_000_000 },
 };
 
 const state = {

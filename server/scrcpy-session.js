@@ -126,8 +126,9 @@ class ScrcpySession extends EventEmitter {
   constructor(serial, options = {}) {
     super();
     this.serial = serial;
+    const parsedMaxSize = Number(options.maxSize);
     this.options = {
-      maxSize: Number(options.maxSize) || 1080,
+      maxSize: options.maxSize !== undefined && options.maxSize !== null && !Number.isNaN(parsedMaxSize) ? parsedMaxSize : 1080,
       bitRate: Number(options.bitRate) || 8_000_000,
       maxFps: Number(options.maxFps) || 60,
       audio: options.audio !== undefined ? Boolean(options.audio) : true,

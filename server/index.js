@@ -371,8 +371,10 @@ server.on('upgrade', (req, socket, head) => {
 wss.on('connection', async (ws, _req, url) => {
   const serial = decodeURIComponent(url.pathname.slice('/ws/device/'.length));
   const q = url.searchParams;
+  const rawMaxSize = q.get('maxSize');
+  const parsedMaxSize = rawMaxSize !== null && rawMaxSize !== '' ? Number(rawMaxSize) : NaN;
   const options = {
-    maxSize: Number(q.get('maxSize')) || 1080,
+    maxSize: !Number.isNaN(parsedMaxSize) ? parsedMaxSize : 1080,
     bitRate: Number(q.get('bitRate')) || 8_000_000,
     maxFps: Number(q.get('maxFps')) || 60,
     audio: q.get('audio') !== 'false',

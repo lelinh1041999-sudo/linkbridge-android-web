@@ -102,11 +102,13 @@
         </button>
 
         <select id="preset-select" class="select-box" style="height: 32px; font-size: 12px;" title="Cấu hình tốc độ / chất lượng">
-          <option value="wifi720">Wi-Fi mượt (720p · 60fps · 3Mbps)</option>
-          <option value="lowlat720">Độ trễ cực thấp (720p · 60fps · 5Mbps)</option>
-          <option value="balanced60" selected>Cân bằng 60 FPS (1080p · 8Mbps)</option>
-          <option value="ultra120">Siêu mượt 120 FPS (1080p · 12Mbps)</option>
-          <option value="sharp1440">Sắc nét 1440p (60fps)</option>
+          <option value="wifi720">Wi-Fi mượt (720 · 60fps · 3Mbps)</option>
+          <option value="lowlat720">Độ trễ cực thấp (720 · 60fps · 5Mbps)</option>
+          <option value="balanced60" selected>Cân bằng 60 FPS (1080 · 8Mbps)</option>
+          <option value="ultra120">Siêu mượt 120 FPS (1080 · 12Mbps)</option>
+          <option value="sharp1440">Nét cao 1440 (60fps · 10Mbps)</option>
+          <option value="sharp1920">Siêu nét 1920 (60fps · 12Mbps)</option>
+          <option value="nativeMax">Nét hết cỡ (Gốc S26 1080×2340 · 16Mbps)</option>
         </select>
 
         <button id="btn-audio-toggle" class="btn btn-icon is-active" title="Bật / Tắt âm thanh từ điện thoại">
@@ -433,10 +435,11 @@
                   <div class="form-field">
                     <label class="form-label" for="set-maxsize">Độ phân giải tối đa</label>
                     <select id="set-maxsize" class="select-box">
-                      <option value="720">720p (Nhanh nhất)</option>
-                      <option value="1080" selected>1080p (Khuyên dùng)</option>
-                      <option value="1440">1440p (Siêu nét)</option>
-                      <option value="0">Gốc (Native S26)</option>
+                      <option value="720">720 (Nhanh nhất)</option>
+                      <option value="1080" selected>1080 (Cân bằng)</option>
+                      <option value="1440">1440 (Nét cao)</option>
+                      <option value="1920">1920 (Siêu nét)</option>
+                      <option value="0">Gốc S26 (1080×2340 · Nét hết cỡ)</option>
                     </select>
                   </div>
                   <div class="form-field">

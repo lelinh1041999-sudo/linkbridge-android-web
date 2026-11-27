@@ -216,7 +216,7 @@ export class ScrcpyWebClient {
     this.audioEnabled = options.audio !== false;
 
     const params = new URLSearchParams({
-      maxSize: String(options.maxSize || 1080),
+      maxSize: String(options.maxSize !== undefined && options.maxSize !== null ? options.maxSize : 1080),
       bitRate: String(options.bitRate || 8_000_000),
       maxFps: String(options.maxFps || 60),
       audio: String(this.audioEnabled),
