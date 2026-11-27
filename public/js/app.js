@@ -1578,10 +1578,6 @@ function toggleMiniMode(forceState) {
 }
 
 function toggleDexMode() {
-  if (state.mode === 'webusb') {
-    toast('Chế độ DeX 16:9 hiện hỗ trợ qua Wi-Fi Bridge (localhost:3000).', 'warn');
-    return;
-  }
   const turningOn = !state.options.newDisplay;
   state.options.newDisplay = turningOn ? '1920x1080/240' : '';
   updateFullscreenLayout();

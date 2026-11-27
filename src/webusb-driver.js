@@ -383,14 +383,18 @@ export class WebUsbScrcpyDriver {
     await this.stopStreamOnly();
     this.stopped = false;
 
+    const parsedMaxSize = Number(options.maxSize);
     const opts = {
-      maxSize: Number(options.maxSize) || 1080,
+      maxSize: options.maxSize !== undefined && options.maxSize !== null && !Number.isNaN(parsedMaxSize) ? parsedMaxSize : 1080,
       bitRate: Number(options.bitRate) || 8_000_000,
       maxFps: Number(options.maxFps) || 60,
       audio: options.audio !== false,
       stayAwake: Boolean(options.stayAwake),
       turnScreenOff: Boolean(options.turnScreenOff),
       videoCodec: options.videoCodec || 'h264',
+      newDisplay: typeof options.newDisplay === 'string' && /^\d{3,4}x\d{3,4}(\/\d{2,3})?$/.test(options.newDisplay.trim())
+        ? options.newDisplay.trim()
+        : '',
     };
 
     // 1. Push scrcpy-server v5.0.1 if missing or size differs
@@ -436,7 +440,7 @@ export class WebUsbScrcpyDriver {
       'control=true',
       `video_codec=${opts.videoCodec}`,
       'audio_codec=opus',
-      `max_size=${opts.maxSize}`,
+      `max_size=${opts.newDisplay ? 0 : opts.maxSize}`,
       `video_bit_rate=${opts.bitRate}`,
       `max_fps=${opts.maxFps}`,
       'video_codec_options=i-frame-interval=2',
@@ -448,6 +452,7 @@ export class WebUsbScrcpyDriver {
       'send_stream_meta=true',
       'send_frame_meta=true',
       'cleanup=true',
+      ...(opts.newDisplay ? [`new_display=${opts.newDisplay}`, 'vd_destroy_content=false'] : []),
     ].join(' ');
 
     this.serverProcess = await this.adb.subprocess.noneProtocol.spawn(cmd);
