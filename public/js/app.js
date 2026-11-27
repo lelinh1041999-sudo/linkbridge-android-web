@@ -3473,11 +3473,16 @@ async function uploadFilesToPhone(fileList) {
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
         const data = await state.webUsbDriver.pushFile(file.name, bytes);
-        toast(`Đã gửi "${data.name}" vào /Download (hiện ngay trong Bộ sưu tập)!`, 'ok');
+        if (data.installed) {
+          toast(`Đã cài đặt APK "${data.name}" qua USB lên S26 thành công!`, 'ok');
+        } else {
+          toast(`Đã gửi "${data.name}" vào /Download (hiện ngay trong Bộ sưu tập)!`, 'ok');
+        }
       } catch (err) {
         toast(`Lỗi gửi "${file.name}" qua USB: ${err.message}`, 'err');
       }
     }
+    if (activePhoneDir === 'downloads') loadPhoneFiles('downloads');
     return;
   }
 
@@ -3577,17 +3582,24 @@ async function loadPhoneFiles(dir = activePhoneDir) {
     b.classList.toggle('is-active', b.dataset.phoneDir === dir);
   });
   if (!phoneFilesList) return;
+  const isUsb = state.mode === 'webusb' && state.webUsbDriver;
   const serial = state.selectedSerial || dom.deviceSelect?.value;
-  if (!serial || state.mode === 'webusb') {
-    phoneFilesList.innerHTML = '<div class="muted-note" style="font-size:12px;">Cần kết nối S26 qua Wi-Fi Bridge để duyệt file.</div>';
+  if (!isUsb && !serial) {
+    phoneFilesList.innerHTML = '<div class="muted-note" style="font-size:12px;">Hãy kết nối S26 (USB trực tiếp hoặc Wi-Fi Bridge) để duyệt file.</div>';
     return;
   }
   phoneFilesList.innerHTML = '<div class="muted-note" style="font-size:12px;">Đang tải danh sách từ S26...</div>';
   try {
-    const res = await fetch(apiUrl(`/api/device/${encodeURIComponent(serial)}/files?dir=${encodeURIComponent(dir)}`));
-    const data = await res.json();
-    if (!res.ok || !data.ok) {
-      phoneFilesList.innerHTML = `<div class="muted-note" style="font-size:12px;">${data.error || 'Không đọc được thư mục.'}</div>`;
+    let data;
+    if (isUsb) {
+      data = await state.webUsbDriver.listFiles(dir);
+    } else {
+      const res = await fetch(apiUrl(`/api/device/${encodeURIComponent(serial)}/files?dir=${encodeURIComponent(dir)}`));
+      data = await res.json();
+      if (!res.ok) data.ok = false;
+    }
+    if (!data || !data.ok) {
+      phoneFilesList.innerHTML = `<div class="muted-note" style="font-size:12px;">${data?.error || 'Không đọc được thư mục.'}</div>`;
       return;
     }
     if (!data.files || data.files.length === 0) {
@@ -3611,14 +3623,43 @@ async function loadPhoneFiles(dir = activePhoneDir) {
       meta.appendChild(nameEl);
       meta.appendChild(subEl);
 
-      const dlBtn = document.createElement('a');
-      dlBtn.className = 'btn btn-sm';
-      dlBtn.textContent = 'Tải về';
-      dlBtn.href = apiUrl(`/api/device/${encodeURIComponent(serial)}/pull?path=${encodeURIComponent(f.path)}`);
-      dlBtn.download = f.name;
-
-      row.appendChild(meta);
-      row.appendChild(dlBtn);
+      if (isUsb) {
+        const dlBtn = document.createElement('button');
+        dlBtn.type = 'button';
+        dlBtn.className = 'btn btn-sm';
+        dlBtn.textContent = 'Tải về';
+        dlBtn.addEventListener('click', async () => {
+          dlBtn.disabled = true;
+          dlBtn.textContent = 'Đang tải...';
+          try {
+            const blob = await state.webUsbDriver.pullFileBlob(f.path);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = f.name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            toast(`Đã tải "${f.name}" qua USB về máy tính!`, 'ok');
+          } catch (err) {
+            toast(`Lỗi tải "${f.name}": ${err.message}`, 'err');
+          } finally {
+            dlBtn.disabled = false;
+            dlBtn.textContent = 'Tải về';
+          }
+        });
+        row.appendChild(meta);
+        row.appendChild(dlBtn);
+      } else {
+        const dlBtn = document.createElement('a');
+        dlBtn.className = 'btn btn-sm';
+        dlBtn.textContent = 'Tải về';
+        dlBtn.href = apiUrl(`/api/device/${encodeURIComponent(serial)}/pull?path=${encodeURIComponent(f.path)}`);
+        dlBtn.download = f.name;
+        row.appendChild(meta);
+        row.appendChild(dlBtn);
+      }
       phoneFilesList.appendChild(row);
     }
   } catch (err) {

@@ -701,7 +701,8 @@ export class WebUsbScrcpyDriver {
       .replace(/[\x00-\x1f/\\:*?"<>|]/g, '_')
       .trim() || `file-${Date.now()}.bin`;
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    const remotePath = `/sdcard/Download/${safeName}`;
+    const isApk = safeName.toLowerCase().endsWith('.apk');
+    const remotePath = isApk ? `/data/local/tmp/${safeName}` : `/sdcard/Download/${safeName}`;
 
     const sync = await this.adb.sync();
     try {
@@ -719,11 +720,68 @@ export class WebUsbScrcpyDriver {
       await sync.dispose();
     }
 
-    // Trigger Android MediaStore scan so pasted/dropped photos appear immediately in Gallery / Zalo / Messenger
     const escapedPath = remotePath.replace(/"/g, '\\"');
-    this.runShell(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file://${escapedPath}"`).catch(() => {});
+    if (isApk) {
+      const res = await this.runShell(`pm install -r "${escapedPath}"; rm -f "${escapedPath}"`);
+      if (!/Success/i.test(res.stdout || '')) {
+        throw new Error(`Cài APK thất bại: ${(res.stdout || '').trim() || 'Lỗi không xác định'}`);
+      }
+      return { ok: true, name: safeName, remotePath, size: data.byteLength, installed: true };
+    }
 
+    // Trigger Android MediaStore scan so pasted/dropped photos appear immediately in Gallery / Zalo / Messenger
+    this.runShell(`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file://${escapedPath}"`).catch(() => {});
     return { ok: true, name: safeName, remotePath, size: data.byteLength, installed: false };
+  }
+
+  async listFiles(dirKey = 'camera') {
+    if (!this.adb) throw new Error('Chưa kết nối WebUSB.');
+    const dirs = {
+      camera: '/sdcard/DCIM/Camera',
+      screenshots: '/sdcard/DCIM/Screenshots',
+      downloads: '/sdcard/Download',
+    };
+    const dir = dirs[String(dirKey).toLowerCase()] || dirs.camera;
+    const cmd = `cd "${dir}" 2>/dev/null && ls -1t 2>/dev/null | head -n 45 | while IFS= read -r f; do [ -f "$f" ] && stat -c '%Y|%s|%n' "$f" 2>/dev/null; done`;
+    const { stdout } = await this.runShell(cmd);
+    const files = [];
+    for (const line of (stdout || '').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const b1 = trimmed.indexOf('|');
+      const b2 = trimmed.indexOf('|', b1 + 1);
+      if (b1 < 0 || b2 < 0) continue;
+      const mtime = Number(trimmed.slice(0, b1)) || 0;
+      const size = Number(trimmed.slice(b1 + 1, b2)) || 0;
+      const name = trimmed.slice(b2 + 1);
+      if (!name || name.startsWith('.')) continue;
+      files.push({ name, path: `${dir}/${name}`, size, mtime });
+    }
+    return { ok: true, dir: dirKey, remoteDir: dir, files: files.slice(0, 40) };
+  }
+
+  async pullFileBlob(remotePath) {
+    if (!this.adb) throw new Error('Chưa kết nối WebUSB.');
+    if (!remotePath || !remotePath.startsWith('/sdcard/') || remotePath.includes('..')) {
+      throw new Error('Đường dẫn file không hợp lệ.');
+    }
+    const sync = await this.adb.sync();
+    const chunks = [];
+    try {
+      const reader = sync.read(remotePath).getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+    } finally {
+      await sync.dispose();
+    }
+    return new Blob(chunks, { type: 'application/octet-stream' });
   }
 
   async stopStreamOnly() {
