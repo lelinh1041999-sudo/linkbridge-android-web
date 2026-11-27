@@ -241,6 +241,7 @@ export class ScrcpyWebClient {
       bitRate: String(options.bitRate || 8_000_000),
       maxFps: String(options.maxFps || 60),
       audio: String(this.audioEnabled),
+      audioDup: String(Boolean(options.audioDup)),
       stayAwake: String(Boolean(options.stayAwake)),
       turnScreenOff: String(Boolean(options.turnScreenOff)),
       videoCodec: this.videoCodec,

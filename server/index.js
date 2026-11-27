@@ -504,6 +504,7 @@ wss.on('connection', async (ws, _req, url) => {
     bitRate: Number(q.get('bitRate')) || 8_000_000,
     maxFps: Number(q.get('maxFps')) || 60,
     audio: q.get('audio') !== 'false',
+    audioDup: q.get('audioDup') === 'true',
     stayAwake: q.get('stayAwake') === 'true',
     turnScreenOff: q.get('turnScreenOff') === 'true',
     videoCodec: q.get('videoCodec') || 'h264',

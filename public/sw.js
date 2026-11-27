@@ -1,4 +1,4 @@
-const CACHE_NAME = 'linhbridge-v35';
+const CACHE_NAME = 'linhbridge-v36';
 const PRECACHE = [
   './',
   './index.html',

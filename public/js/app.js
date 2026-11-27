@@ -206,6 +206,8 @@ const state = {
     videoCodec: localStorage.getItem('lb_video_codec') === 'h265' ? 'h265' : 'h264',
     newDisplay: '',
     audio: true,
+    audioDup: false,
+    audioMode: 'pc', // 'pc' | 'phone' | 'both'
     stayAwake: false,
     turnScreenOff: false,
     rightClickBack: true,
@@ -1851,12 +1853,44 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-dom.btnAudioToggle.addEventListener('click', () => {
-  state.audioMuted = !state.audioMuted;
+const AUDIO_MODES = ['pc', 'phone', 'both'];
+const AUDIO_MODE_LABELS = {
+  pc: 'Loa PC',
+  phone: 'Loa S26',
+  both: 'Cả 2',
+};
+
+function syncAudioModeUi() {
+  const mode = AUDIO_MODES.includes(state.options.audioMode) ? state.options.audioMode : 'pc';
+  state.options.audioMode = mode;
+  state.options.audio = mode !== 'phone';
+  state.options.audioDup = mode === 'both';
+  state.audioMuted = mode === 'phone';
   client.setAudioMuted(state.audioMuted);
-  dom.btnAudioToggle.classList.toggle('is-active', !state.audioMuted);
-  dom.iconAudioOn.style.display = state.audioMuted ? 'none' : '';
-  dom.iconAudioOff.style.display = state.audioMuted ? '' : 'none';
+
+  const labelEl = $('audio-mode-label');
+  if (labelEl) labelEl.textContent = AUDIO_MODE_LABELS[mode];
+  dom.btnAudioToggle?.classList.toggle('is-active', mode !== 'phone');
+  if (dom.iconAudioOn) dom.iconAudioOn.style.display = mode === 'phone' ? 'none' : '';
+  if (dom.iconAudioOff) dom.iconAudioOff.style.display = mode === 'phone' ? '' : 'none';
+  if (dom.setAudio) dom.setAudio.checked = state.options.audio;
+}
+
+dom.btnAudioToggle.addEventListener('click', () => {
+  const cur = AUDIO_MODES.includes(state.options.audioMode) ? state.options.audioMode : 'pc';
+  const next = AUDIO_MODES[(AUDIO_MODES.indexOf(cur) + 1) % AUDIO_MODES.length];
+  state.options.audioMode = next;
+  syncAudioModeUi();
+  saveStreamSettings();
+  const msgMap = {
+    pc: 'Âm thanh: Phát ra loa máy tính (S26 im tiếng)',
+    phone: 'Âm thanh: Trả về loa / tai nghe của S26 (máy tính im)',
+    both: 'Âm thanh: Phát đồng thời cả S26 & máy tính',
+  };
+  toast(msgMap[next], 'ok');
+  if (state.connected) {
+    reconnectWithNewSettings();
+  }
 });
 
 dom.btnToggleDrawer.addEventListener('click', () => {
@@ -1896,6 +1930,8 @@ function saveStreamSettings() {
       videoCodec: state.options.videoCodec,
       newDisplay: state.options.newDisplay || '',
       audio: state.options.audio,
+      audioDup: state.options.audioDup,
+      audioMode: state.options.audioMode || 'pc',
       turnScreenOff: state.options.turnScreenOff,
       stayAwake: state.options.stayAwake,
       rightClickBack: state.options.rightClickBack,
@@ -1919,7 +1955,15 @@ function loadSavedStreamSettings() {
     if (typeof saved.newDisplay === 'string') {
       state.options.newDisplay = saved.newDisplay;
     }
-    if (typeof saved.audio === 'boolean') state.options.audio = saved.audio;
+    if (AUDIO_MODES.includes(saved.audioMode)) {
+      state.options.audioMode = saved.audioMode;
+      state.options.audio = saved.audioMode !== 'phone';
+      state.options.audioDup = saved.audioMode === 'both';
+    } else if (typeof saved.audio === 'boolean') {
+      state.options.audio = saved.audio;
+      state.options.audioMode = saved.audio ? 'pc' : 'phone';
+      state.options.audioDup = false;
+    }
     if (typeof saved.turnScreenOff === 'boolean') state.options.turnScreenOff = saved.turnScreenOff;
     if (typeof saved.stayAwake === 'boolean') state.options.stayAwake = saved.stayAwake;
     if (typeof saved.rightClickBack === 'boolean') state.options.rightClickBack = saved.rightClickBack;
@@ -1936,7 +1980,7 @@ function syncSettingsFormFromState() {
   if (dom.setBitrate) dom.setBitrate.value = String(mbps);
   if (dom.setBitrateVal) dom.setBitrateVal.textContent = `${mbps} Mbps`;
   if (dom.setCodec) dom.setCodec.value = state.options.videoCodec;
-  if (dom.setAudio) dom.setAudio.checked = Boolean(state.options.audio);
+  syncAudioModeUi();
   if (dom.setScreenOff) dom.setScreenOff.checked = Boolean(state.options.turnScreenOff);
   if (dom.setStayAwake) dom.setStayAwake.checked = Boolean(state.options.stayAwake);
   if (dom.setRightBack) dom.setRightBack.checked = Boolean(state.options.rightClickBack);
@@ -1953,7 +1997,13 @@ function readSettingsFromForm() {
     state.options.videoCodec = dom.setCodec.value === 'h265' ? 'h265' : 'h264';
     localStorage.setItem('lb_video_codec', state.options.videoCodec);
   }
-  state.options.audio = dom.setAudio.checked;
+  const wantAudio = dom.setAudio.checked;
+  if (!wantAudio) {
+    state.options.audioMode = 'phone';
+  } else if (state.options.audioMode === 'phone') {
+    state.options.audioMode = 'pc';
+  }
+  syncAudioModeUi();
   state.options.turnScreenOff = dom.setScreenOff.checked;
   state.options.stayAwake = dom.setStayAwake.checked;
   state.options.rightClickBack = dom.setRightBack.checked;
