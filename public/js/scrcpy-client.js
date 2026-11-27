@@ -243,6 +243,7 @@ export class ScrcpyWebClient {
       stayAwake: String(Boolean(options.stayAwake)),
       turnScreenOff: String(Boolean(options.turnScreenOff)),
       videoCodec: this.videoCodec,
+      newDisplay: options.newDisplay || '',
       restart: String(Boolean(forceRestart)),
     });
 

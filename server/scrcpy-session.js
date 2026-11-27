@@ -135,6 +135,9 @@ class ScrcpySession extends EventEmitter {
       stayAwake: Boolean(options.stayAwake),
       turnScreenOff: Boolean(options.turnScreenOff),
       videoCodec: options.videoCodec || 'h264',
+      newDisplay: typeof options.newDisplay === 'string' && /^\d{3,4}x\d{3,4}(\/\d{2,3})?$/.test(options.newDisplay.trim())
+        ? options.newDisplay.trim()
+        : '',
     };
 
     this.state = 'idle'; // idle | starting | running | stopped
@@ -241,7 +244,7 @@ class ScrcpySession extends EventEmitter {
         'control=true',
         `video_codec=${this.options.videoCodec}`,
         'audio_codec=opus',
-        `max_size=${this.options.maxSize}`,
+        `max_size=${this.options.newDisplay ? 0 : this.options.maxSize}`,
         `video_bit_rate=${this.options.bitRate}`,
         `max_fps=${this.options.maxFps}`,
         'video_codec_options=i-frame-interval=2',
@@ -253,6 +256,7 @@ class ScrcpySession extends EventEmitter {
         'send_stream_meta=true',
         'send_frame_meta=true',
         'cleanup=true',
+        ...(this.options.newDisplay ? [`new_display=${this.options.newDisplay}`, 'vd_destroy_content=false'] : []),
       ];
 
       this.serverProc = spawn(adb.ADB_BIN, serverArgs, { stdio: ['ignore', 'pipe', 'pipe'] });

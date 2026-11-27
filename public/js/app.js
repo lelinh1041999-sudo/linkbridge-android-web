@@ -84,6 +84,8 @@ const dom = {
   hwFullscreen: $('hw-fullscreen'),
   stageArea: document.querySelector('.stage-area'),
   phoneScreenWrap: document.querySelector('.phone-screen-wrap'),
+  btnMiniTop: $('btn-mini-top'),
+  btnDexTop: $('btn-dex-top'),
   btnRatioTop: $('btn-ratio-top'),
   btnFullscreenTop: $('btn-fullscreen-top'),
   fsHud: $('fs-hud'),
@@ -95,6 +97,7 @@ const dom = {
   fsAutoOrient: $('fs-auto-orient'),
   fsFitMode: $('fs-fit-mode'),
   fsFitLabel: $('fs-fit-label'),
+  fsDex: $('fs-dex'),
   fsOled: $('fs-oled'),
   fsExit: $('fs-exit'),
   ratioPopover: $('ratio-popover'),
@@ -200,6 +203,7 @@ const state = {
     maxFps: 60,
     bitRate: 8_000_000,
     videoCodec: localStorage.getItem('lb_video_codec') === 'h265' ? 'h265' : 'h264',
+    newDisplay: '',
     audio: true,
     stayAwake: false,
     turnScreenOff: false,
@@ -1300,6 +1304,14 @@ function isFullscreenActive() {
   return Boolean(document.fullscreenElement && dom.stageArea && document.fullscreenElement === dom.stageArea);
 }
 
+function isMiniModeActive() {
+  return Boolean(dom.appShell?.classList.contains('is-mini-mode'));
+}
+
+function isHudModeActive() {
+  return isFullscreenActive() || isMiniModeActive();
+}
+
 function getCurrentVideoSize(overrideW, overrideH) {
   const w = overrideW || (state.demoMode ? demo.width : (client.width || dom.canvas.width || 380));
   const h = overrideH || (state.demoMode ? demo.height : (client.height || dom.canvas.height || 820));
@@ -1370,11 +1382,11 @@ function toggleRatioPopover(forceOpen) {
     const { w, h } = getCurrentVideoSize();
     const isLandscape = w > h;
     syncRatioPopoverUi(isLandscape, getDisplayConfig(isLandscape));
-    if (isFullscreenActive()) {
+    if (isHudModeActive()) {
       clearTimeout(fsHudHideTimer);
       dom.fsHud?.classList.remove('is-hidden');
     }
-  } else if (isFullscreenActive()) {
+  } else if (isHudModeActive()) {
     showFsHudTemporarily(2200);
   }
 }
@@ -1398,14 +1410,20 @@ window.addEventListener('pointerdown', (e) => {
 
 function updateFullscreenLayout(overrideW, overrideH) {
   const active = isFullscreenActive();
+  const mini = isMiniModeActive();
+  const edgeToEdge = active || mini;
   const isLive = Boolean(state.connected || state.demoMode);
   dom.stageArea?.classList.toggle('is-fullscreen', active);
   dom.phoneBezel?.classList.toggle('is-live', isLive);
   dom.hwFullscreen?.classList.toggle('is-active', active);
   dom.btnFullscreenTop?.classList.toggle('is-active', active);
+  dom.btnMiniTop?.classList.toggle('is-active', mini);
+  const dexOn = Boolean(state.options.newDisplay);
+  dom.btnDexTop?.classList.toggle('is-active', dexOn);
+  dom.fsDex?.classList.toggle('is-accent', dexOn);
 
   // When idle (showing onboarding overlay), let CSS size the onboarding card naturally
-  if (!active && !isLive) {
+  if (!edgeToEdge && !isLive) {
     dom.canvas.style.width = '';
     dom.canvas.style.height = '';
     if (dom.phoneScreenWrap) {
@@ -1425,7 +1443,7 @@ function updateFullscreenLayout(overrideW, overrideH) {
 
   let boxW;
   let boxH;
-  if (active) {
+  if (edgeToEdge) {
     boxW = stageW;
     boxH = stageH;
   } else {
@@ -1468,7 +1486,7 @@ function updateFullscreenLayout(overrideW, overrideH) {
   dom.canvas.style.height = `${cssH}px`;
 
   if (dom.phoneScreenWrap) {
-    if (active) {
+    if (edgeToEdge) {
       dom.phoneScreenWrap.style.width = '';
       dom.phoneScreenWrap.style.height = '';
     } else {
@@ -1488,13 +1506,13 @@ function updateFullscreenLayout(overrideW, overrideH) {
 }
 
 function showFsHudTemporarily(ms = 2600) {
-  if (!dom.fsHud || !isFullscreenActive()) return;
+  if (!dom.fsHud || !isHudModeActive()) return;
   dom.fsHud.classList.remove('is-hidden');
   clearTimeout(fsHudHideTimer);
   fsHudHideTimer = setTimeout(() => {
     const popoverOpen = dom.ratioPopover?.classList.contains('is-open');
     const hoveredWithMouse = lastPointerType !== 'touch' && dom.fsHud.matches(':hover');
-    if (isFullscreenActive() && !hoveredWithMouse && !popoverOpen) {
+    if (isHudModeActive() && !hoveredWithMouse && !popoverOpen) {
       dom.fsHud.classList.add('is-hidden');
     }
   }, ms);
@@ -1509,9 +1527,62 @@ function toggleFullscreen() {
   }
 }
 
+function toggleMiniMode(forceState) {
+  if (!dom.appShell) return;
+  const next = typeof forceState === 'boolean' ? forceState : !isMiniModeActive();
+  dom.appShell.classList.toggle('is-mini-mode', next);
+  updateFullscreenLayout();
+  requestAnimationFrame(() => updateFullscreenLayout());
+  if (next) {
+    showFsHudTemporarily(2600);
+    toast('Chế độ Gọn (kiểu iPhone Mirroring) — di chuột lên mép trên hoặc nhấn Esc / Alt+M để thoát.', 'ok');
+  } else {
+    clearTimeout(fsHudHideTimer);
+    dom.fsHud?.classList.remove('is-hidden');
+  }
+}
+
+function toggleDexMode() {
+  if (state.mode === 'webusb') {
+    toast('Chế độ DeX 16:9 hiện hỗ trợ qua Wi-Fi Bridge (localhost:3000).', 'warn');
+    return;
+  }
+  const turningOn = !state.options.newDisplay;
+  state.options.newDisplay = turningOn ? '1920x1080/240' : '';
+  updateFullscreenLayout();
+  if (state.connected) {
+    toast(
+      turningOn
+        ? 'Đang mở Màn hình rời 16:9 (DeX / Desktop) — độc lập với màn hình S26!'
+        : 'Đang thoát Màn hình rời 16:9 về màn hình chính S26...',
+      'ok'
+    );
+    reconnectWithNewSettings();
+  } else {
+    toast(
+      turningOn
+        ? 'Đã bật chế độ DeX 16:9 — bấm Kết nối để mở màn hình rời!'
+        : 'Đã tắt chế độ DeX 16:9.',
+      'ok'
+    );
+  }
+}
+
 dom.hwFullscreen?.addEventListener('click', toggleFullscreen);
 dom.btnFullscreenTop?.addEventListener('click', toggleFullscreen);
-dom.fsExit?.addEventListener('click', () => document.exitFullscreen?.().catch(() => {}));
+dom.btnMiniTop?.addEventListener('click', () => toggleMiniMode());
+dom.btnDexTop?.addEventListener('click', () => toggleDexMode());
+dom.fsDex?.addEventListener('click', () => {
+  toggleDexMode();
+  showFsHudTemporarily(2500);
+});
+dom.fsExit?.addEventListener('click', () => {
+  if (isFullscreenActive()) {
+    document.exitFullscreen?.().catch(() => {});
+  } else if (isMiniModeActive()) {
+    toggleMiniMode(false);
+  }
+});
 
 dom.btnRatioTop?.addEventListener('click', () => toggleRatioPopover());
 dom.fsFitMode?.addEventListener('click', () => toggleRatioPopover());
@@ -1669,7 +1740,7 @@ if (screen.orientation && screen.orientation.addEventListener) {
 handleChromebookOrientationChange(true);
 
 dom.stageArea?.addEventListener('pointermove', (e) => {
-  if (!isFullscreenActive()) return;
+  if (!isHudModeActive()) return;
   if (e.clientY <= 56) {
     showFsHudTemporarily(2600);
   }
@@ -1688,6 +1759,12 @@ window.addEventListener('keydown', (e) => {
   if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'f' || e.key === 'F')) {
     e.preventDefault();
     toggleFullscreen();
+  } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'm' || e.key === 'M')) {
+    e.preventDefault();
+    toggleMiniMode();
+  } else if (e.key === 'Escape' && isMiniModeActive() && !isFullscreenActive()) {
+    e.preventDefault();
+    toggleMiniMode(false);
   }
 });
 

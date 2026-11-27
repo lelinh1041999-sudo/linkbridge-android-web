@@ -1675,5 +1675,115 @@ dialog.modal::backdrop {
   color: var(--text-muted);
 }
 
+/* ==========================================================================
+   Mini Mode (iPhone Mirroring style — clean borderless phone in its own window)
+   ========================================================================== */
+.app-shell.is-mini-mode {
+  grid-template-rows: 1fr;
+}
+
+.app-shell.is-mini-mode .topbar,
+.app-shell.is-mini-mode .drawer,
+.app-shell.is-mini-mode .hw-rail,
+.app-shell.is-mini-mode .stage-hint {
+  display: none !important;
+}
+
+.app-shell.is-mini-mode .workbench {
+  grid-template-columns: 1fr;
+}
+
+.app-shell.is-mini-mode .stage-area {
+  padding: 0;
+  background: #000000;
+}
+
+.app-shell.is-mini-mode .phone-rig {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  gap: 0;
+}
+
+.app-shell.is-mini-mode .phone-bezel {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: #000000;
+  box-shadow: none;
+}
+
+.app-shell.is-mini-mode .phone-screen-wrap {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #000000;
+  overflow: hidden;
+}
+
+.app-shell.is-mini-mode .fs-handle {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.app-shell.is-mini-mode .fs-handle span {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.app-shell.is-mini-mode .fs-hud {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(15, 19, 27, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.app-shell.is-mini-mode .fs-hud.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -14px);
+}
+
+.app-shell.is-mini-mode .ratio-popover {
+  position: fixed;
+  top: 58px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+}
+
+
 
 

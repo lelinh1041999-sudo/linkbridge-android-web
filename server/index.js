@@ -381,6 +381,7 @@ wss.on('connection', async (ws, _req, url) => {
     stayAwake: q.get('stayAwake') === 'true',
     turnScreenOff: q.get('turnScreenOff') === 'true',
     videoCodec: q.get('videoCodec') || 'h264',
+    newDisplay: q.get('newDisplay') || '',
   };
   const forceRestart = q.get('restart') === 'true';
 
