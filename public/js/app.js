@@ -1596,6 +1596,7 @@ function toggleMiniMode(forceState) {
 function toggleDexMode() {
   const turningOn = !state.options.newDisplay;
   state.options.newDisplay = turningOn ? '1920x1080/240' : '';
+  saveStreamSettings();
   updateFullscreenLayout();
   if (state.connected) {
     toast(
@@ -1883,6 +1884,67 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   });
 });
 
+const STREAM_SETTINGS_KEY = 'lb_stream_settings_v1';
+
+function saveStreamSettings() {
+  try {
+    localStorage.setItem(STREAM_SETTINGS_KEY, JSON.stringify({
+      preset: dom.presetSelect?.value || 'balanced60',
+      maxSize: state.options.maxSize,
+      maxFps: state.options.maxFps,
+      bitRate: state.options.bitRate,
+      videoCodec: state.options.videoCodec,
+      newDisplay: state.options.newDisplay || '',
+      audio: state.options.audio,
+      turnScreenOff: state.options.turnScreenOff,
+      stayAwake: state.options.stayAwake,
+      rightClickBack: state.options.rightClickBack,
+    }));
+  } catch {}
+}
+
+function loadSavedStreamSettings() {
+  try {
+    const raw = localStorage.getItem(STREAM_SETTINGS_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved.maxSize !== undefined && !Number.isNaN(Number(saved.maxSize))) {
+      state.options.maxSize = Number(saved.maxSize);
+    }
+    if (saved.maxFps) state.options.maxFps = Number(saved.maxFps);
+    if (saved.bitRate) state.options.bitRate = Number(saved.bitRate);
+    if (saved.videoCodec === 'h264' || saved.videoCodec === 'h265') {
+      state.options.videoCodec = saved.videoCodec;
+    }
+    if (typeof saved.newDisplay === 'string') {
+      state.options.newDisplay = saved.newDisplay;
+    }
+    if (typeof saved.audio === 'boolean') state.options.audio = saved.audio;
+    if (typeof saved.turnScreenOff === 'boolean') state.options.turnScreenOff = saved.turnScreenOff;
+    if (typeof saved.stayAwake === 'boolean') state.options.stayAwake = saved.stayAwake;
+    if (typeof saved.rightClickBack === 'boolean') state.options.rightClickBack = saved.rightClickBack;
+    if (saved.preset && dom.presetSelect && PRESETS[saved.preset]) {
+      dom.presetSelect.value = saved.preset;
+    }
+  } catch {}
+}
+
+function syncSettingsFormFromState() {
+  if (dom.setMaxSize) dom.setMaxSize.value = String(state.options.maxSize);
+  if (dom.setFps) dom.setFps.value = String(state.options.maxFps);
+  const mbps = Math.max(2, Math.min(24, Math.round((state.options.bitRate || 8_000_000) / 1_000_000)));
+  if (dom.setBitrate) dom.setBitrate.value = String(mbps);
+  if (dom.setBitrateVal) dom.setBitrateVal.textContent = `${mbps} Mbps`;
+  if (dom.setCodec) dom.setCodec.value = state.options.videoCodec;
+  if (dom.setAudio) dom.setAudio.checked = Boolean(state.options.audio);
+  if (dom.setScreenOff) dom.setScreenOff.checked = Boolean(state.options.turnScreenOff);
+  if (dom.setStayAwake) dom.setStayAwake.checked = Boolean(state.options.stayAwake);
+  if (dom.setRightBack) dom.setRightBack.checked = Boolean(state.options.rightClickBack);
+  const dexOn = Boolean(state.options.newDisplay);
+  dom.btnDexTop?.classList.toggle('is-active', dexOn);
+  dom.fsDex?.classList.toggle('is-accent', dexOn);
+}
+
 function readSettingsFromForm() {
   state.options.maxSize = Number(dom.setMaxSize.value);
   state.options.maxFps = Number(dom.setFps.value);
@@ -1897,11 +1959,20 @@ function readSettingsFromForm() {
   state.options.rightClickBack = dom.setRightBack.checked;
   if (dom.setTouchSwipe) state.options.touchSwipeScroll = dom.setTouchSwipe.checked;
   if (dom.setInvertSwipe) state.options.invertTouchSwipe = dom.setInvertSwipe.checked;
+  saveStreamSettings();
 }
+
+loadSavedStreamSettings();
+syncSettingsFormFromState();
+
+[dom.setMaxSize, dom.setFps, dom.setBitrate, dom.setAudio, dom.setScreenOff, dom.setStayAwake].forEach((el) => {
+  el?.addEventListener('change', () => readSettingsFromForm());
+});
 
 if (dom.setCodec) {
   dom.setCodec.value = state.options.videoCodec;
   dom.setCodec.addEventListener('change', async () => {
+    readSettingsFromForm();
     if (dom.setCodec.value === 'h265') {
       const ok = await ScrcpyWebClient.isHevcSupported();
       if (!ok) {
@@ -1935,6 +2006,7 @@ dom.setBitrate.addEventListener('input', () => {
 
 dom.setRightBack.addEventListener('change', () => {
   state.options.rightClickBack = dom.setRightBack.checked;
+  saveStreamSettings();
 });
 
 function reconnectWithNewSettings() {
