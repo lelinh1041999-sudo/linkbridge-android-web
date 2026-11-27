@@ -1786,20 +1786,55 @@ if (screen.orientation && screen.orientation.addEventListener) {
 // Initialize layout immediately if already opened in vertical folded mode
 handleChromebookOrientationChange(true);
 
+let cursorIdleTimer = null;
+
+function setCursorIdle(idle) {
+  dom.stageArea?.classList.toggle('is-cursor-idle', Boolean(idle));
+}
+
+function resetCursorIdleTimer(ms = 2200) {
+  clearTimeout(cursorIdleTimer);
+  setCursorIdle(false);
+  if (!isHudModeActive()) return;
+  cursorIdleTimer = setTimeout(() => {
+    const popoverOpen = dom.ratioPopover?.classList.contains('is-open');
+    const hudHovered = lastPointerType !== 'touch' && dom.fsHud?.matches(':hover');
+    if (isHudModeActive() && !popoverOpen && !hudHovered) {
+      setCursorIdle(true);
+    }
+  }, ms);
+}
+
 dom.stageArea?.addEventListener('pointermove', (e) => {
   if (!isHudModeActive()) return;
+  resetCursorIdleTimer(2200);
   if (e.clientY <= 56) {
     showFsHudTemporarily(2600);
   }
 });
 
+dom.stageArea?.addEventListener('pointerdown', () => {
+  if (isHudModeActive()) resetCursorIdleTimer(2200);
+});
+
+document.addEventListener('fullscreenchange', () => {
+  if (isHudModeActive()) resetCursorIdleTimer(2200);
+  else {
+    clearTimeout(cursorIdleTimer);
+    setCursorIdle(false);
+  }
+});
+
 dom.fsHud?.addEventListener('pointerenter', () => {
   clearTimeout(fsHudHideTimer);
+  clearTimeout(cursorIdleTimer);
+  setCursorIdle(false);
   dom.fsHud.classList.remove('is-hidden');
 });
 
 dom.fsHud?.addEventListener('pointerleave', () => {
   showFsHudTemporarily(1800);
+  resetCursorIdleTimer(2200);
 });
 
 window.addEventListener('keydown', (e) => {

@@ -1908,6 +1908,22 @@ dialog.modal::backdrop {
   color: var(--text-muted);
 }
 
+/* Auto-hide mouse cursor & top pull handle when idle during Fullscreen / Mini Mode video */
+.fs-handle {
+  transition: opacity 240ms ease;
+}
+
+.stage-area.is-cursor-idle,
+.stage-area.is-cursor-idle #screen-canvas,
+.stage-area.is-cursor-idle .phone-screen-wrap {
+  cursor: none !important;
+}
+
+.stage-area.is-cursor-idle .fs-handle {
+  opacity: 0;
+}
+
+
 
 
 
