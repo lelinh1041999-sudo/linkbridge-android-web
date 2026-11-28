@@ -692,6 +692,7 @@ function setDexButtonsVisible(visible) {
           frame = document.createElement('div');
           frame.className = 'dex-window-frame';
           frame.dataset.taskId = item.id;
+          frame.window = item;
           const bar = document.createElement('div');
           bar.className = 'dex-window-titlebar';
           const title = document.createElement('span');
@@ -700,15 +701,19 @@ function setDexButtonsVisible(visible) {
             if (event.button !== 0) return;
             event.preventDefault();
             event.stopPropagation();
+            session.busy = true;
             const startX = event.clientX;
             const startY = event.clientY;
-            const start = { ...item };
+            const start = { ...frame.window };
             let currentX = startX;
             let currentY = startY;
+            let hasMoved = false;
             try { bar.setPointerCapture(event.pointerId); } catch {}
+            session.focus(item.id).catch((error) => toast(error.message, 'err'));
             const onMove = (moveEvent) => {
               currentX = moveEvent.clientX;
               currentY = moveEvent.clientY;
+              hasMoved = true;
               frame.style.left = `${canvasRect.left - wrapRect.left + Math.max(0, Math.min(start.left + (currentX - startX) / scaleX, display.width - start.width)) * scaleX}px`;
               frame.style.top = `${canvasRect.top - wrapRect.top + Math.max(0, Math.min(start.top + (currentY - startY) / scaleY, display.height - start.height)) * scaleY}px`;
             };
@@ -716,10 +721,16 @@ function setDexButtonsVisible(visible) {
               bar.removeEventListener('pointermove', onMove);
               bar.removeEventListener('pointerup', finish);
               bar.removeEventListener('pointercancel', finish);
-              if (currentX === startX && currentY === startY) return;
-              const left = Math.max(0, Math.min(Math.round(start.left + (currentX - startX) / scaleX), display.width - start.width));
-              const top = Math.max(0, Math.min(Math.round(start.top + (currentY - startY) / scaleY), display.height - start.height));
-              await session.setBounds(item.id, left, top, start.width, start.height);
+              try {
+                if (!hasMoved) return;
+                const left = Math.max(0, Math.min(Math.round(start.left + (currentX - startX) / scaleX), display.width - start.width));
+                const top = Math.max(0, Math.min(Math.round(start.top + (currentY - startY) / scaleY), display.height - start.height));
+                await session.setBounds(item.id, left, top, start.width, start.height);
+              } catch (error) {
+                toast(error.message, 'err');
+              } finally {
+                session.busy = false;
+              }
             };
             bar.addEventListener('pointermove', onMove);
             bar.addEventListener('pointerup', finish, { once: true });
@@ -748,12 +759,13 @@ function setDexButtonsVisible(visible) {
           };
           const minimize = makeAction('−', 'minimize', () => session.minimize(item.id));
           const maximize = makeAction('□', 'maximize', async () => {
+            const current = frame.window;
             const previous = dexBoundsById.get(item.id);
             if (previous) {
               await session.setBounds(item.id, previous.left, previous.top, previous.width, previous.height);
               dexBoundsById.delete(item.id);
             } else {
-              dexBoundsById.set(item.id, { left: item.left, top: item.top, width: item.width, height: item.height });
+              dexBoundsById.set(item.id, { left: current.left, top: current.top, width: current.width, height: current.height });
               await session.setBounds(item.id, 0, 40, display.width, display.height - 100);
             }
           });
@@ -762,6 +774,7 @@ function setDexButtonsVisible(visible) {
           frame.append(bar);
           dom.dexWindowLayer.append(frame);
         }
+        frame.window = item;
         frame.style.left = `${canvasRect.left - wrapRect.left + item.left * scaleX}px`;
         frame.style.top = `${canvasRect.top - wrapRect.top + item.top * scaleY}px`;
         frame.style.width = `${item.width * scaleX}px`;
