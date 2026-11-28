@@ -3576,16 +3576,36 @@ $('btn-ai-toggle').addEventListener('click', () => {
 });
 $('btn-cb-share')?.addEventListener('click', () => aiBridge.toggleChromebookShare());
 $('btn-ai-regen').addEventListener('click', () => aiBridge.regenerate());
-$('btn-ai-copy').addEventListener('click', async () => {
+async function copyAiBridgeInfo() {
   const relayUrl = $('ai-relay-url').value.trim() || DEFAULT_AI_RELAY_URL;
   const info = `Relay: ${relayUrl}\nRoom: ${aiBridge.roomId}\nToken: ${aiBridge.token}`;
   try {
     await navigator.clipboard.writeText(info);
     toast('Đã copy thông tin AI Bridge để gửi cho AI!', 'ok');
   } catch {
-    aiBridge.setFeedback(true, info);
+    // Clipboard API may be blocked on an insecure origin or by browser policy.
+    const field = document.createElement('textarea');
+    field.value = info;
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand('copy');
+    field.remove();
+    if (copied) {
+      toast('Đã copy thông tin AI Bridge để gửi cho AI!', 'ok');
+    } else {
+      if (!$('ai-modal').open) openAiModal();
+      aiBridge.setFeedback(false, 'Không tự copy được. Hãy chọn và copy thông tin bên dưới.');
+      const fallback = $('ai-feedback');
+      fallback.textContent = info;
+      fallback.style.userSelect = 'text';
+      fallback.style.whiteSpace = 'pre-wrap';
+    }
   }
-});
+}
+$('btn-ai-copy').addEventListener('click', copyAiBridgeInfo);
+$('btn-ai-copy-chip')?.addEventListener('click', copyAiBridgeInfo);
 
 // ==========================================================================
 // Screen Video Recorder (Canvas Video + Phone Audio -> WebM Download)
