@@ -1,9 +1,10 @@
-const CACHE_NAME = 'linhbridge-v41';
+const CACHE_NAME = 'linhbridge-v42';
 const PRECACHE = [
   './',
   './index.html',
   './css/styles.css',
   './js/app.js',
+  './js/dex-window-drag.js',
   './js/scrcpy-client.js',
   './js/keymap.js',
   './js/audio-worklet.js',

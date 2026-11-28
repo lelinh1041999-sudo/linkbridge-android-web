@@ -1983,6 +1983,11 @@ dialog.modal::backdrop {
   opacity: 0;
 }
 
+#screen-canvas.moving-dex-window,
+.stage-area.is-cursor-idle #screen-canvas.moving-dex-window {
+  cursor: grabbing !important;
+}
+
 
 
 

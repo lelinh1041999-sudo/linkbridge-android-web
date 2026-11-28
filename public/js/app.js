@@ -12,6 +12,7 @@ import {
 } from './scrcpy-client.js';
 import { CODE_TO_ANDROID_KEYCODE, getAndroidMetaState } from './keymap.js';
 import { WebUsbScrcpyDriver } from './webusb-driver.js';
+import { DexWindowDrag } from './dex-window-drag.js';
 
 // ==========================================================================
 // Bridge Endpoint Resolution (supports both localhost:3000 & GitHub Pages!)
@@ -29,6 +30,15 @@ function getBridgeBase() {
 
 function apiUrl(path) {
   return `${getBridgeBase()}${path}`;
+}
+
+async function runBridgeShell(serial, command, base = getBridgeBase()) {
+  const res = await fetch(`${base}/api/device/${encodeURIComponent(serial)}/shell`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command }),
+  });
+  return res.json();
 }
 
 // ==========================================================================
@@ -284,6 +294,24 @@ function appendLog(kind, text, meta = '') {
 }
 
 function setConnectionVisual(mode, title = '', desc = '') {
+  cancelDexPress();
+  dexWindows?.close();
+  dexWindows = null;
+  if (mode === 'live' && state.options.newDisplay) {
+    const driver = client.webUsbDriver;
+    const serial = client.serial;
+    const base = getBridgeBase();
+    const runShell = client.transportMode === 'webusb'
+      ? (cmd) => driver.runShell(cmd)
+      : (cmd) => runBridgeShell(serial, cmd, base);
+    const session = new DexWindowDrag(runShell, (msg) => toast(msg, 'err'));
+    dexWindows = session;
+    session.prepare().catch((err) => {
+      if (dexWindows === session) appendLog('err', err.message);
+    });
+  }
+  $('stage-mouse-button').textContent = dexWindows ? 'Giữ chuột trái' : 'Click';
+  $('stage-mouse-action').textContent = dexWindows ? 'Kéo cửa sổ' : 'Chạm';
   dom.connDot.className = 'status-dot';
   if (mode === 'live') {
     dom.connDot.classList.add('live');
@@ -612,6 +640,29 @@ let activePointerDown = false;
 let activePointerId = null;
 let dragStartPt = null;
 let dragStartTime = 0;
+let dexWindows = null;
+let dexPress = null;
+
+function finishDexPress(cancelled) {
+  if (!dexPress) return;
+  clearTimeout(dexPress.timer);
+  if (dexPress.moving) dexWindows?.end(cancelled);
+  dexPress = null;
+  dom.canvas.classList.remove('moving-dex-window');
+  activePointerDown = false;
+  activePointerId = null;
+  dragStartPt = null;
+  showTouchDots(false, null);
+}
+
+function cancelDexPress() {
+  finishDexPress(true);
+}
+
+window.addEventListener('blur', cancelDexPress);
+dom.canvas.addEventListener('lostpointercapture', (e) => {
+  if (e.pointerId === activePointerId) cancelDexPress();
+});
 
 function getPhoneCoords(e) {
   const rect = dom.canvas.getBoundingClientRect();
@@ -734,6 +785,7 @@ function sendNativeTouch(action, pointerId, pt) {
 
 dom.canvas.addEventListener('pointerdown', (e) => {
   if (!state.connected && !state.demoMode) return;
+  if (e.pointerType !== 'touch' && activePointerDown) return;
   e.preventDefault();
 
   if (state.connected && !state.audioMuted) {
@@ -814,6 +866,15 @@ dom.canvas.addEventListener('pointerdown', (e) => {
   dragStartPt = pt;
   dragStartTime = Date.now();
 
+  if (dexWindows && e.pointerType === 'mouse' && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+    dexPress = { moving: false, timer: setTimeout(() => {
+      dexPress.moving = true;
+      dom.canvas.classList.add('moving-dex-window');
+      dexWindows.begin(pt);
+    }, 400) };
+    return;
+  }
+
   showTouchDots(true, pt, e.ctrlKey);
   sendTouch(MOTION_ACTION.DOWN, pt, e.ctrlKey);
 });
@@ -835,6 +896,17 @@ dom.canvas.addEventListener('pointermove', (e) => {
 
   if (!activePointerDown || !pt) return;
   if (activePointerId !== null && e.pointerId !== activePointerId) return;
+  if (dexPress) {
+    if (dexPress.moving) {
+      dexWindows.update(pt);
+      return;
+    }
+    if (Math.hypot(pt.cssX - dragStartPt.cssX, pt.cssY - dragStartPt.cssY) < 5) return;
+    // Immediate drags still scroll/select inside the app.
+    clearTimeout(dexPress.timer);
+    dexPress = null;
+    sendTouch(MOTION_ACTION.DOWN, dragStartPt);
+  }
   showTouchDots(true, pt, e.ctrlKey);
   sendTouch(MOTION_ACTION.MOVE, pt, e.ctrlKey);
 });
@@ -852,6 +924,16 @@ function finishPointer(e) {
 
   if (!activePointerDown) return;
   if (activePointerId !== null && e.pointerId !== activePointerId) return;
+  if (dexPress) {
+    if (e.type === 'pointercancel') return cancelDexPress();
+    clearTimeout(dexPress.timer);
+    if (dexPress.moving) {
+      dexWindows.update(getPhoneCoords(e) || dragStartPt);
+      return finishDexPress(false);
+    }
+    dexPress = null;
+    sendTouch(MOTION_ACTION.DOWN, dragStartPt);
+  }
   activePointerDown = false;
   activePointerId = null;
   const pt = getPhoneCoords(e) || dragStartPt;
@@ -3144,12 +3226,7 @@ const aiBridge = {
       return state.webUsbDriver.runShell(command);
     }
     if (state.selectedSerial) {
-      const res = await fetch(apiUrl(`/api/device/${encodeURIComponent(state.selectedSerial)}/shell`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command }),
-      });
-      return res.json();
+      return runBridgeShell(state.selectedSerial, command);
     }
     throw new Error('Chưa kết nối điện thoại trên LinhBridge.');
   },
