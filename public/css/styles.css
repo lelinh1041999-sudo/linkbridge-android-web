@@ -1408,7 +1408,7 @@ dialog.modal::backdrop {
   display: none;
 }
 
-/* Touch-friendly top pull handle for folded Tablet Mode */
+/* Slim top pull handle (click/tap or Alt+H to toggle HUD without blocking top app controls) */
 .stage-area:fullscreen .fs-handle,
 .stage-area.is-fullscreen .fs-handle {
   position: fixed;
@@ -1417,29 +1417,44 @@ dialog.modal::backdrop {
   transform: translateX(-50%);
   z-index: 55;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  width: 96px;
-  height: 22px;
+  width: 72px;
+  height: 10px;
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 0;
+  padding: 3px 0 0;
 }
 
 .stage-area:fullscreen .fs-handle span,
 .stage-area.is-fullscreen .fs-handle span {
-  width: 48px;
-  height: 4px;
+  width: 40px;
+  height: 3px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.28);
   transition: background 150ms ease, width 150ms ease;
 }
 
 .stage-area:fullscreen .fs-handle:hover span,
 .stage-area.is-fullscreen .fs-handle:hover span {
-  background: rgba(255, 255, 255, 0.72);
-  width: 60px;
+  background: rgba(255, 255, 255, 0.78);
+  width: 52px;
+}
+
+@media (pointer: coarse) {
+  .stage-area:fullscreen .fs-handle,
+  .stage-area.is-fullscreen .fs-handle {
+    width: 96px;
+    height: 18px;
+    padding-top: 5px;
+  }
+
+  .stage-area:fullscreen .fs-handle span,
+  .stage-area.is-fullscreen .fs-handle span {
+    width: 48px;
+    height: 4px;
+  }
 }
 
 /* Floating Auto-Hide Control Pill in Fullscreen */
@@ -1754,21 +1769,40 @@ dialog.modal::backdrop {
   transform: translateX(-50%);
   z-index: 55;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  width: 96px;
-  height: 20px;
+  width: 72px;
+  height: 10px;
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 0;
+  padding: 3px 0 0;
 }
 
 .app-shell.is-mini-mode .fs-handle span {
-  width: 44px;
-  height: 4px;
+  width: 40px;
+  height: 3px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.34);
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 150ms ease, width 150ms ease;
+}
+
+.app-shell.is-mini-mode .fs-handle:hover span {
+  width: 52px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+@media (pointer: coarse) {
+  .app-shell.is-mini-mode .fs-handle {
+    width: 96px;
+    height: 18px;
+    padding-top: 5px;
+  }
+
+  .app-shell.is-mini-mode .fs-handle span {
+    width: 48px;
+    height: 4px;
+  }
 }
 
 .app-shell.is-mini-mode .fs-hud {

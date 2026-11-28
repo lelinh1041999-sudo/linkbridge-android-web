@@ -1136,9 +1136,15 @@ const DIRECT_CONTROL_CODES = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown',
 ]);
 
+function isLocalWebShortcut(e) {
+  if (!e.altKey || e.ctrlKey || e.metaKey) return false;
+  return e.code === 'KeyF' || e.code === 'KeyM' || e.code === 'KeyH';
+}
+
 async function handlePhoneKeyDown(e) {
   if (!state.connected && !state.demoMode) return;
   if (isComposingIme || e.isComposing) return;
+  if (isLocalWebShortcut(e)) return;
 
   // Backspace: let #ime-proxy handle it if buffer has pending word (for Telex), else send directly to phone
   if (e.code === 'Backspace') {
@@ -1201,6 +1207,7 @@ dom.imeProxy.addEventListener('keydown', handlePhoneKeyDown);
 
 dom.imeProxy.addEventListener('keyup', (e) => {
   if (!state.connected || isComposingIme) return;
+  if (isLocalWebShortcut(e)) return;
   if (e.code === 'Backspace' && lastImeValue.length === 0) {
     return sendKeycode(KEY_ACTION.UP, 67, getAndroidMetaState(e));
   }
@@ -1215,6 +1222,7 @@ dom.imeProxy.addEventListener('keyup', (e) => {
 // route keyboard immediately to Samsung S26 without requiring a click on the phone canvas!
 window.addEventListener('keydown', (e) => {
   if (!state.connected && !state.demoMode) return;
+  if (isLocalWebShortcut(e)) return;
   if (document.activeElement === dom.imeProxy) return;
   if (isTypingInWebUi(e.target) || isTypingInWebUi(document.activeElement)) return;
   if (document.querySelector('dialog[open]')) return;
@@ -1459,6 +1467,15 @@ window.addEventListener('pointerdown', (e) => {
   ) {
     toggleRatioPopover(false);
   }
+  if (
+    isHudModeActive() &&
+    isFsHudVisible() &&
+    !dom.fsHud?.contains(e.target) &&
+    !dom.fsHandle?.contains(e.target) &&
+    !dom.ratioPopover?.contains(e.target)
+  ) {
+    hideFsHud();
+  }
 }, true);
 
 function updateFullscreenLayout(overrideW, overrideH) {
@@ -1558,6 +1575,26 @@ function updateFullscreenLayout(overrideW, overrideH) {
   syncRatioPopoverUi(isLandscape, cfg);
 }
 
+function hideFsHud() {
+  if (!dom.fsHud) return;
+  clearTimeout(fsHudHideTimer);
+  dom.fsHud.classList.add('is-hidden');
+}
+
+function isFsHudVisible() {
+  return Boolean(dom.fsHud && !dom.fsHud.classList.contains('is-hidden'));
+}
+
+function toggleFsHud() {
+  if (!isHudModeActive()) return;
+  if (isFsHudVisible()) {
+    toggleRatioPopover(false);
+    hideFsHud();
+  } else {
+    showFsHudTemporarily(4000);
+  }
+}
+
 function showFsHudTemporarily(ms = 2600) {
   if (!dom.fsHud || !isHudModeActive()) return;
   dom.fsHud.classList.remove('is-hidden');
@@ -1587,8 +1624,8 @@ function toggleMiniMode(forceState) {
   updateFullscreenLayout();
   requestAnimationFrame(() => updateFullscreenLayout());
   if (next) {
-    showFsHudTemporarily(2600);
-    toast('Chế độ Gọn (kiểu iPhone Mirroring) — di chuột lên mép trên hoặc nhấn Esc / Alt+M để thoát.', 'ok');
+    showFsHudTemporarily(2000);
+    toast('Chế độ Gọn — bấm vạch mảnh mép trên hoặc nhấn Alt+H để mở thanh điều khiển (Esc / Alt+M để thoát).', 'ok');
   } else {
     clearTimeout(fsHudHideTimer);
     dom.fsHud?.classList.remove('is-hidden');
@@ -1692,7 +1729,7 @@ document.addEventListener('fullscreenchange', () => {
   setTimeout(() => updateFullscreenLayout(), 160);
   setTimeout(() => updateFullscreenLayout(), 360);
   if (isFullscreenActive()) {
-    showFsHudTemporarily(3200);
+    showFsHudTemporarily(2000);
     setTimeout(focusPhoneKeyboard, 80);
   } else {
     clearTimeout(fsHudHideTimer);
@@ -1756,7 +1793,7 @@ function handleChromebookOrientationChange(fromUserAction = false) {
 }
 
 dom.fsHandle?.addEventListener('click', () => {
-  showFsHudTemporarily(4000);
+  toggleFsHud();
 });
 
 dom.fsAutoOrient?.addEventListener('click', () => {
@@ -1808,12 +1845,9 @@ function resetCursorIdleTimer(ms = 2200) {
   }, ms);
 }
 
-dom.stageArea?.addEventListener('pointermove', (e) => {
+dom.stageArea?.addEventListener('pointermove', () => {
   if (!isHudModeActive()) return;
   resetCursorIdleTimer(2200);
-  if (e.clientY <= 56) {
-    showFsHudTemporarily(2600);
-  }
 });
 
 dom.stageArea?.addEventListener('pointerdown', () => {
@@ -1829,24 +1863,30 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 dom.fsHud?.addEventListener('pointerenter', () => {
+  if (!isFsHudVisible()) return;
   clearTimeout(fsHudHideTimer);
   clearTimeout(cursorIdleTimer);
   setCursorIdle(false);
-  dom.fsHud.classList.remove('is-hidden');
 });
 
 dom.fsHud?.addEventListener('pointerleave', () => {
-  showFsHudTemporarily(1800);
+  if (!isFsHudVisible()) return;
+  showFsHudTemporarily(1200);
   resetCursorIdleTimer(2200);
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'f' || e.key === 'F')) {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyF' || e.key === 'f' || e.key === 'F')) {
     e.preventDefault();
     toggleFullscreen();
-  } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'm' || e.key === 'M')) {
+  } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyM' || e.key === 'm' || e.key === 'M')) {
     e.preventDefault();
     toggleMiniMode();
+  } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'KeyH' || e.key === 'h' || e.key === 'H')) {
+    if (isHudModeActive()) {
+      e.preventDefault();
+      toggleFsHud();
+    }
   } else if (e.key === 'Escape' && isMiniModeActive() && !isFullscreenActive()) {
     e.preventDefault();
     toggleMiniMode(false);

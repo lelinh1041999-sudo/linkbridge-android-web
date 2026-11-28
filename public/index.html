@@ -279,14 +279,15 @@
           <span><kbd>Vuốt 2 ngón</kbd> Lướt / Mở App Drawer</span>
           <span><kbd>Chuột phải</kbd> Back</span>
           <span><kbd>Alt + F</kbd> Toàn màn hình</span>
+          <span><kbd>Alt + H</kbd> Thanh điều khiển</span>
         </div>
 
-        <!-- Touch-friendly top pull handle in Fullscreen (for folded Tablet Mode) -->
-        <button id="fs-handle" class="fs-handle" type="button" aria-label="Hiện thanh điều khiển toàn màn hình" title="Chạm để hiện thanh điều khiển">
+        <!-- Slim top pull handle in Fullscreen/Mini Mode (click/tap or Alt+H to toggle HUD) -->
+        <button id="fs-handle" class="fs-handle" type="button" aria-label="Hiện hoặc ẩn thanh điều khiển toàn màn hình" title="Bấm hoặc nhấn Alt+H để hiện/ẩn thanh điều khiển">
           <span></span>
         </button>
 
-        <!-- Floating Fullscreen HUD (auto-hides, hover top edge or tap handle to reveal) -->
+        <!-- Floating Fullscreen HUD (auto-hides, click handle or press Alt+H to toggle) -->
         <div id="fs-hud" class="fs-hud" aria-label="Thanh điều khiển toàn màn hình">
           <button id="fs-back" class="fs-btn" title="Quay lại (Back)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
