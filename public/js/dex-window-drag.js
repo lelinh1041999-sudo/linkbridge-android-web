@@ -6,7 +6,7 @@ function windowAt(dump, x, y) {
       task = line;
       continue;
     }
-    const bounds = line.match(/^\s*mBounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)/);
+    const bounds = line.match(/mBounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)/);
     if (!bounds || !task) continue;
     const header = task;
     task = null;
@@ -54,7 +54,7 @@ export class DexWindowDrag {
 
   async listWindows() {
     const display = await this.prepare();
-    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|^ *mBounds=Rect\\(' || true`);
+    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|mBounds=Rect\\(' || true`);
     const windows = [];
     let task;
     for (const line of dump.split('\n')) {
@@ -62,7 +62,7 @@ export class DexWindowDrag {
         task = line;
         continue;
       }
-      const bounds = line.match(/^\s*mBounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)/);
+      const bounds = line.match(/mBounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)/);
       if (!bounds || !task) continue;
       const id = task.match(/#(\d+)\b/);
       const app = task.match(/\bA=\d+:([^\s}]+)/);
@@ -128,7 +128,7 @@ export class DexWindowDrag {
   async track(drag) {
     if (this.closed || drag.cancelled) return;
     const display = await this.prepare();
-    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|^ *mBounds=Rect\\(' || true`);
+    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|mBounds=Rect\\(' || true`);
     const scaleX = display.width / drag.start.w;
     const scaleY = display.height / drag.start.h;
     const task = windowAt(dump, drag.start.x * scaleX, drag.start.y * scaleY);
