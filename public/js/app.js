@@ -69,6 +69,7 @@ const dom = {
 
   phoneBezel: $('phone-bezel'),
   canvas: $('screen-canvas'),
+  dexWindowLayer: $('dex-window-layer'),
   imeProxy: $('ime-proxy'),
   touchDot1: $('touch-dot-1'),
   touchDot2: $('touch-dot-2'),
@@ -294,6 +295,7 @@ function appendLog(kind, text, meta = '') {
 }
 
 function setConnectionVisual(mode, title = '', desc = '') {
+  setDexButtonsVisible(false);
   cancelDexPress();
   dexWindows?.close();
   dexWindows = null;
@@ -306,12 +308,14 @@ function setConnectionVisual(mode, title = '', desc = '') {
       : (cmd) => runBridgeShell(serial, cmd, base);
     const session = new DexWindowDrag(runShell, (msg) => toast(msg, 'err'));
     dexWindows = session;
+    setDexButtonsVisible(true);
     session.prepare().catch((err) => {
       if (dexWindows === session) appendLog('err', err.message);
     });
   }
   $('stage-mouse-button').textContent = dexWindows ? 'Giữ chuột trái' : 'Click';
   $('stage-mouse-action').textContent = dexWindows ? 'Kéo cửa sổ' : 'Chạm';
+  $('stage-window-hint').hidden = !dexWindows;
   dom.connDot.className = 'status-dot';
   if (mode === 'live') {
     dom.connDot.classList.add('live');
@@ -642,6 +646,8 @@ let dragStartPt = null;
 let dragStartTime = 0;
 let dexWindows = null;
 let dexPress = null;
+let dexPollTimer = null;
+let dexBoundsById = new Map();
 
 function finishDexPress(cancelled) {
   if (!dexPress) return;
@@ -657,6 +663,120 @@ function finishDexPress(cancelled) {
 
 function cancelDexPress() {
   finishDexPress(true);
+}
+
+function setDexButtonsVisible(visible) {
+  dom.dexWindowLayer.replaceChildren();
+  dexBoundsById.clear();
+  clearInterval(dexPollTimer);
+  dexPollTimer = null;
+  if (!visible || !dexWindows) return;
+  const session = dexWindows;
+  const update = async () => {
+    if (dexWindows !== session || session.closed || session.busy) return;
+    session.busy = true;
+    try {
+      const { display, windows } = await session.listWindows();
+      if (dexWindows !== session) return;
+      const canvasRect = dom.canvas.getBoundingClientRect();
+      const wrapRect = dom.phoneScreenWrap.getBoundingClientRect();
+      const scaleX = canvasRect.width / display.width;
+      const scaleY = canvasRect.height / display.height;
+      const activeIds = new Set(windows.map((item) => item.id));
+      for (const frame of dom.dexWindowLayer.children) {
+        if (!activeIds.has(Number(frame.dataset.taskId))) frame.remove();
+      }
+      for (const [z, item] of windows.entries()) {
+        let frame = dom.dexWindowLayer.querySelector(`[data-task-id="${item.id}"]`);
+        if (!frame) {
+          frame = document.createElement('div');
+          frame.className = 'dex-window-frame';
+          frame.dataset.taskId = item.id;
+          const bar = document.createElement('div');
+          bar.className = 'dex-window-titlebar';
+          const title = document.createElement('span');
+          title.className = 'dex-window-title';
+          const move = (event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const start = { ...item };
+            let currentX = startX;
+            let currentY = startY;
+            try { bar.setPointerCapture(event.pointerId); } catch {}
+            const onMove = (moveEvent) => {
+              currentX = moveEvent.clientX;
+              currentY = moveEvent.clientY;
+              frame.style.left = `${canvasRect.left - wrapRect.left + Math.max(0, Math.min(start.left + (currentX - startX) / scaleX, display.width - start.width)) * scaleX}px`;
+              frame.style.top = `${canvasRect.top - wrapRect.top + Math.max(0, Math.min(start.top + (currentY - startY) / scaleY, display.height - start.height)) * scaleY}px`;
+            };
+            const finish = async () => {
+              bar.removeEventListener('pointermove', onMove);
+              bar.removeEventListener('pointerup', finish);
+              bar.removeEventListener('pointercancel', finish);
+              if (currentX === startX && currentY === startY) return;
+              const left = Math.max(0, Math.min(Math.round(start.left + (currentX - startX) / scaleX), display.width - start.width));
+              const top = Math.max(0, Math.min(Math.round(start.top + (currentY - startY) / scaleY), display.height - start.height));
+              await session.setBounds(item.id, left, top, start.width, start.height);
+            };
+            bar.addEventListener('pointermove', onMove);
+            bar.addEventListener('pointerup', finish, { once: true });
+            bar.addEventListener('pointercancel', finish, { once: true });
+          };
+          bar.addEventListener('pointerdown', move);
+          const makeAction = (label, name, action) => {
+            const button = document.createElement('button');
+            button.className = `dex-window-action${name === 'close' ? ' dex-window-close' : ''}`;
+            button.type = 'button';
+            button.textContent = label;
+            button.title = name === 'close' ? 'Đóng cửa sổ' : name === 'minimize' ? 'Thu nhỏ' : 'Phóng to / khôi phục';
+            button.addEventListener('pointerdown', (event) => event.stopPropagation());
+            button.addEventListener('click', async (event) => {
+              event.stopPropagation();
+              try {
+                await action();
+              } catch (error) {
+                toast(error.message, 'err');
+                return;
+              }
+              if (name === 'close') frame.remove();
+              if (name === 'minimize') frame.remove();
+            });
+            return button;
+          };
+          const minimize = makeAction('−', 'minimize', () => session.minimize(item.id));
+          const maximize = makeAction('□', 'maximize', async () => {
+            const previous = dexBoundsById.get(item.id);
+            if (previous) {
+              await session.setBounds(item.id, previous.left, previous.top, previous.width, previous.height);
+              dexBoundsById.delete(item.id);
+            } else {
+              dexBoundsById.set(item.id, { left: item.left, top: item.top, width: item.width, height: item.height });
+              await session.setBounds(item.id, 0, 40, display.width, display.height - 100);
+            }
+          });
+          const close = makeAction('×', 'close', () => session.closeWindow(item.id));
+          bar.append(title, minimize, maximize, close);
+          frame.append(bar);
+          dom.dexWindowLayer.append(frame);
+        }
+        frame.style.left = `${canvasRect.left - wrapRect.left + item.left * scaleX}px`;
+        frame.style.top = `${canvasRect.top - wrapRect.top + item.top * scaleY}px`;
+        frame.style.width = `${item.width * scaleX}px`;
+        frame.style.height = `${item.height * scaleY}px`;
+        frame.style.zIndex = String(windows.length - z);
+        frame.querySelector('.dex-window-title').textContent = item.app.split('/').pop();
+      }
+    } catch (error) {
+      appendLog('err', error.message);
+    } finally {
+      session.busy = false;
+    }
+  };
+  update();
+  dexPollTimer = setInterval(update, 1000);
 }
 
 window.addEventListener('blur', cancelDexPress);

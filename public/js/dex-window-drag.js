@@ -52,6 +52,52 @@ export class DexWindowDrag {
     return { id, width, height };
   }
 
+  async listWindows() {
+    const display = await this.prepare();
+    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|^ *mBounds=Rect\\(' || true`);
+    const windows = [];
+    let task;
+    for (const line of dump.split('\n')) {
+      if (/^\s*\* Task\{/.test(line)) {
+        task = line;
+        continue;
+      }
+      const bounds = line.match(/^\s*mBounds=Rect\((-?\d+), (-?\d+) - (-?\d+), (-?\d+)\)/);
+      if (!bounds || !task) continue;
+      const id = task.match(/#(\d+)\b/);
+      const app = task.match(/\bA=\d+:([^\s}]+)/);
+      if (id && app && /\bvisible=true\b/.test(task) && /\btype=standard\b/.test(task) && /\bmode=freeform\b/.test(task)) {
+        const [left, top, right, bottom] = bounds.slice(1).map(Number);
+        windows.push({
+          id: Number(id[1]),
+          app: app[1],
+          left,
+          top,
+          width: right - left,
+          height: bottom - top,
+        });
+      }
+      task = null;
+    }
+    return { display, windows };
+  }
+
+  async focus(id) {
+    await this.shell(`am task focus ${id}`);
+  }
+
+  async minimize(id) {
+    await this.shell(`am task move-to-back ${id}`);
+  }
+
+  async closeWindow(id) {
+    await this.shell(`am task remove ${id}`);
+  }
+
+  async setBounds(id, left, top, width, height) {
+    await this.shell(`am task focus ${id} && am task resize ${id} ${left} ${top} ${left + width} ${top + height}`);
+  }
+
   begin(start) {
     const drag = { start, point: start, released: false, cancelled: false };
     this.drag = drag;
@@ -82,7 +128,7 @@ export class DexWindowDrag {
   async track(drag) {
     if (this.closed || drag.cancelled) return;
     const display = await this.prepare();
-    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|^ *mBounds=Rect\\('`);
+    const dump = await this.shell(`dumpsys activity activities | sed -n '/^Display #${display.id} /,/^Display #/p' | grep -E '^ *\\* Task\\{|^ *mBounds=Rect\\(' || true`);
     const scaleX = display.width / drag.start.w;
     const scaleY = display.height / drag.start.h;
     const task = windowAt(dump, drag.start.x * scaleX, drag.start.y * scaleY);
